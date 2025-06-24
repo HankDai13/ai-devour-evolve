@@ -1,0 +1,42 @@
+cmake_minimum_required(VERSION 3.5) # CMake install : https://cmake.org/download/
+project(test-torch LANGUAGES CXX)
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+set(CMAKE_PREFIX_PATH "D:/tools/libtorch-cpu/libtorch") # LibTorch Dir
+set(CMAKE_C_COMPILER "D:/qt/Tools/mingw1310_64/bin/gcc.exe")
+set(CMAKE_CXX_COMPILER "D:/qt/Tools/mingw1310_64/bin/g++.exe")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# 禁用CUDA以确保与MinGW兼容
+set(USE_CUDA OFF)
+set(CUDA_TOOLKIT_ROOT_DIR "")
+
+find_package(Torch REQUIRED)
+
+# 过滤掉MSVC特定的编译标志，必须在find_package(Torch)之后
+if(WIN32 AND MINGW)
+    foreach(flag_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        string(REPLACE "/EHsc" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/bigobj" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/MD" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/W3" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/Wall" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4251" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4244" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4267" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4996" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4129" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4458" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4018" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4190" "" ${flag_var} "${${flag_var}}")
+    endforeach()
+endif()
+
+add_executable(${PROJECT_NAME} test_torch.cpp) 
+
+target_link_libraries(${PROJECT_NAME} PRIVATE "${TORCH_LIBRARIES}")
+
+# 对于Windows，解决LibTorch的一个常见链接问题
+if(WIN32)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+endif()

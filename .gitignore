@@ -1,0 +1,60 @@
+# 忽略编译生成的文件
+build/
+build-*/
+*.exe
+*.dll
+*.lib
+*.exp
+
+# 忽略Qt生成的文件
+*.pro.user
+*.autosave
+*.tmp
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# 忽略Visual Studio文件
+.vs/
+*.vcxproj.user
+*.vcxproj.filters
+*.suo
+*.sdf
+*.opensdf
+*.db
+*.ipch
+
+# 忽略CMake生成的文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# 忽略IDE配置文件
+.vscode/
+.idea/
+
+# 忽略日志和临时文件
+*.log
+*.tmp
+*.temp
+
+# 保留但忽略具体的模型文件（太大）
+models/*.pt
+models/*.pth
+!models/.gitkeep
+
+# 忽略Python相关
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+env/
+
+# 忽略系统文件
+.DS_Store
+Thumbs.db
