@@ -1,8 +1,19 @@
 cmake_minimum_required(VERSION 3.5) # CMake install : https://cmake.org/download/
 project(ai-devour-evolve LANGUAGES CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-set(CMAKE_PREFIX_PATH "D:/qt/6.9.1/msvc2022_64;D:/tools/libtorch-cpu/libtorch") # Qt Kit Dir and LibTorch Dir
-# set(CMAKE_PREFIX_PATH "D:/qt/6.9.1/mingw_64;D:/tools/libtorch") # Qt Kit Dir and LibTorch Dir
+
+# 根据编译器选择Qt路径
+if(MSVC)
+    set(CMAKE_PREFIX_PATH "D:/qt/6.9.1/msvc2022_64;D:/tools/libtorch-cpu/libtorch") # Qt Kit Dir and LibTorch Dir
+    message(STATUS "Using MSVC compiler with Qt MSVC build")
+elseif(MINGW)
+    set(CMAKE_PREFIX_PATH "D:/qt/6.9.1/mingw_64;D:/tools/libtorch-cpu/libtorch") # Qt Kit Dir and LibTorch Dir
+    message(STATUS "Using MinGW compiler with Qt MinGW build")
+else()
+    message(WARNING "Unknown compiler, trying MSVC paths")
+    set(CMAKE_PREFIX_PATH "D:/qt/6.9.1/msvc2022_64;D:/tools/libtorch-cpu/libtorch")
+endif()
+
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -15,6 +26,26 @@ set(CUDA_TOOLKIT_ROOT_DIR "")
 
 find_package(Qt6 COMPONENTS Widgets REQUIRED) # Qt COMPONENTS
 find_package(Torch REQUIRED)
+
+# 过滤掉MSVC特定的编译标志，如果使用MinGW的话
+if(WIN32 AND MINGW)
+    foreach(flag_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        string(REPLACE "/EHsc" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/bigobj" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/MD" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/Z7" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/W3" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/Wall" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4251" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4244" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4267" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4996" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4129" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4458" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4018" "" ${flag_var} "${${flag_var}}")
+        string(REPLACE "/wd4190" "" ${flag_var} "${${flag_var}}")
+    endforeach()
+endif()
 
 aux_source_directory(./src srcs)
 
@@ -38,4 +69,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 # 对于Windows，解决LibTorch的一个常见链接问题
 if(WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+    # 只在MinGW下禁用某些警告
+    if(MINGW)
+        target_compile_options(${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
+    endif()
 endif()
