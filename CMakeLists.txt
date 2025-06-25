@@ -49,13 +49,44 @@ endif()
 
 aux_source_directory(./src srcs)
 
+# 明确指定源文件（推荐方式，更精确控制）
+set(SOURCES
+    src/main.cpp
+    src/DemoQtVS.cpp
+    src/GameView.cpp
+    src/PlayerCell.cpp
+    src/FoodItem.cpp  # 新增食物类
+    # 未来添加更多源文件时在这里列出
+)
+
+set(HEADERS
+    src/DemoQtVS.h
+    src/GameView.h
+    src/PlayerCell.h
+    src/FoodItem.h    # 新增食物类
+    # 未来添加更多头文件时在这里列出
+)
+
+set(UI_FILES
+    src/DemoQtVS.ui
+    # 未来添加更多UI文件时在这里列出
+)
+
 # Specify MSVC UTF-8 encoding   
 add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
 add_executable(${PROJECT_NAME}
     WIN32 # If you need a terminal for debug, please comment this statement 
-    ${srcs} 
+    ${SOURCES}
+    ${HEADERS}
+    ${UI_FILES}
+)
+
+# 设置头文件包含目录
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_BINARY_DIR}  # 为自动生成的MOC文件
 ) 
 
 # 将Qt6和Torch的库链接到我们的程序上
@@ -73,4 +104,31 @@ if(WIN32)
     if(MINGW)
         target_compile_options(${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
     endif()
+    # MSVC特定设置
+    if(MSVC)
+        target_compile_options(${PROJECT_NAME} PRIVATE /W3)
+        # 设置为多线程运行库
+        set_property(TARGET ${PROJECT_NAME} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
 endif()
+
+# 为将来的开发添加一些有用的编译定义
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    QT_DISABLE_DEPRECATED_BEFORE=0x060000  # 禁用Qt 6.0之前的废弃API
+    $<$<CONFIG:Debug>:DEBUG>
+    $<$<CONFIG:Release>:NDEBUG>
+)
+
+# 安装规则（可选）
+install(TARGETS ${PROJECT_NAME}
+    BUNDLE DESTINATION .
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# 打印配置信息
+message(STATUS "Project: ${PROJECT_NAME}")
+message(STATUS "Qt found: ${Qt6_VERSION}")
+message(STATUS "Torch found: ${Torch_VERSION}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID}")
