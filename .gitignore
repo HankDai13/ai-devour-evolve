@@ -33,7 +33,11 @@ Makefile
 *.cmake
 
 # 忽略IDE配置文件
-.vscode/
+.vscode/c_cpp_properties.json
+.vscode/tasks.json
+# 保留重要的项目配置文件
+# .vscode/settings.json      # 包含Qt和CMake路径配置
+# .vscode/launch.json        # 包含调试配置
 .idea/
 
 # 忽略日志和临时文件
