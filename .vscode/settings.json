@@ -1,0 +1,13 @@
+{
+    "qtConfigure.qtKitDir": "D:/qt/6.9.1/msvc2022_64",
+    "cmake.generator": "Visual Studio 17 2022",
+    "cmake.platform": "x64",
+    "cmake.preferredGenerators": [
+        "Visual Studio 17 2022",
+        "Visual Studio 16 2019",
+        "MinGW Makefiles"
+    ],
+    "cmake.configureSettings": {
+        "CMAKE_PREFIX_PATH": "D:/qt/6.9.1/msvc2022_64;D:/tools/libtorch-cpu/libtorch"
+    }
+}

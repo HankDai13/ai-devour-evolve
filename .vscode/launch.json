@@ -1,0 +1,31 @@
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "AI Devour Evolve (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Debug/ai-devour-evolve.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart",
+            "visualizerFile": "c:\\Users\\drhen\\AppData\\Roaming\\Code\\User\\workspaceStorage\\73ce00ac753e33350e1eee722bd2bea6\\tonka3000.qtvsctools\\qt.natvis.xml"
+        },
+        {
+            "name": "AI Devour Evolve (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/Release/ai-devour-evolve.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "visualizerFile": "c:\\Users\\drhen\\AppData\\Roaming\\Code\\User\\workspaceStorage\\73ce00ac753e33350e1eee722bd2bea6\\tonka3000.qtvsctools\\qt.natvis.xml"
+        }
+    ]
+}
