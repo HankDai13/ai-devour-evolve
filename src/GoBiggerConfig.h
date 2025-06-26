@@ -10,16 +10,18 @@ namespace GoBiggerConfig {
 // ============ 核心数值参数 ============
 
 // 细胞基础参数
-constexpr float CELL_MIN_RADIUS = 18.0f;           // 最小半径（进一步增大）
+constexpr float CELL_MIN_RADIUS = 22.0f;           // 最小半径（再次增大）
 constexpr float CELL_MAX_RADIUS = 300.0f;          // 最大半径
-constexpr int CELL_MIN_MASS = 35;                  // 初始质量（进一步增大）
+constexpr int CELL_MIN_MASS = 50;                  // 初始质量（再次增大）
 constexpr int CELL_MAX_MASS = 22500;               // 最大质量(半径300时)
-constexpr float MASS_TO_RADIUS_RATIO = 1.3f;       // 质量到半径转换: radius = sqrt(mass) * 1.3（增大）
+constexpr float MASS_TO_RADIUS_RATIO = 1.4f;       // 质量到半径转换: radius = sqrt(mass) * 1.4（再次增大）
 
-// 移动参数
-constexpr float BASE_SPEED = 80.0f;                // 基础移动速度（进一步降低）
+// 移动参数 (基于GoBigger动态计算)
+constexpr float BASE_SPEED = 100.0f;               // 基础移动速度
 constexpr float SPEED_DECAY_FACTOR = 1.0f;         // 速度衰减因子
-constexpr float ACCELERATION_FACTOR = 1.5f;        // 加速度因子（进一步降低）
+constexpr float ACCELERATION_FACTOR = 1.8f;        // 加速度因子
+constexpr float SPEED_RADIUS_COEFF_A = 2.35f;      // 速度计算系数A
+constexpr float SPEED_RADIUS_COEFF_B = 5.66f;      // 速度计算系数B
 // 实际速度 = BASE_SPEED / sqrt(mass / CELL_MIN_MASS)
 
 // 分裂参数
@@ -34,10 +36,11 @@ constexpr float EAT_RATIO = 1.25f;                 // 吞噬质量比例
 constexpr float EAT_DISTANCE_RATIO = 0.8f;         // 吞噬距离比例
 
 // 吐孢子参数
-constexpr int EJECT_MASS = 1;                      // 孢子质量
-constexpr float EJECT_SPEED = 320.0f;              // 孢子速度（稍微降低）
+constexpr float EJECT_MASS = 5.0f;                 // 孢子质量 (调整到5.0，更合理的最低质量)
+constexpr float EJECT_SPEED = 200.0f;              // 孢子初始速度 (增大使动画更明显)
 constexpr float EJECT_COST_RATIO = 0.02f;          // 质量消耗比例
 constexpr float EJECT_COOLDOWN = 0.1f;             // 吐孢子冷却时间
+constexpr int EJECT_VEL_ZERO_FRAME = 10;           // 孢子速度衰减帧数 (GoBigger标准)
 
 // 地图参数
 constexpr int MAP_WIDTH = 4000;                    // 地图宽度
@@ -47,10 +50,10 @@ constexpr int VIEWPORT_HEIGHT = 1080;              // 视窗高度
 
 // 食物参数
 constexpr int FOOD_COUNT = 800;                    // 地图食物总数
-constexpr int FOOD_MASS = 4;                       // 普通食物质量（进一步增大）
-constexpr float FOOD_RADIUS = 6.5f;                // 食物半径（进一步增大）
-constexpr float FOOD_MIN_MASS = 3.0f;              // 食物最小质量（进一步增大）
-constexpr float FOOD_MAX_MASS = 6.0f;              // 食物最大质量（进一步增大）
+constexpr int FOOD_MASS = 6;                       // 普通食物质量（再次增大）
+constexpr float FOOD_RADIUS = 8.0f;                // 食物半径（再次增大）
+constexpr float FOOD_MIN_MASS = 4.0f;              // 食物最小质量（再次增大）
+constexpr float FOOD_MAX_MASS = 8.0f;              // 食物最大质量（再次增大）
 
 // 荆棘参数
 constexpr int THORNS_COUNT = 40;                   // 地图荆棘总数
@@ -90,9 +93,21 @@ inline float radiusToMass(float radius) {
     return radius * radius / MASS_TO_RADIUS_RATIO;
 }
 
-// 计算移动速度
+// 计算移动速度 (基于GoBigger算法)
 inline float calculateSpeed(float mass) {
     return BASE_SPEED / std::sqrt(mass / static_cast<float>(CELL_MIN_MASS));
+}
+
+// GoBigger风格的动态速度计算
+inline float calculateDynamicSpeed(float radius, float inputRatio = 1.0f) {
+    // GoBigger公式: (2.35 + 5.66 / radius) * ratio
+    return (SPEED_RADIUS_COEFF_A + SPEED_RADIUS_COEFF_B / radius) * inputRatio * 10.0f; // 乘以10放大速度
+}
+
+// 动态加速度计算
+inline float calculateDynamicAcceleration(float radius, float inputRatio = 1.0f) {
+    // 基于半径的加速度，小球加速更快
+    return ACCELERATION_FACTOR * (1.0f + 3.0f / radius) * inputRatio;
 }
 
 // 检查是否可以吞噬

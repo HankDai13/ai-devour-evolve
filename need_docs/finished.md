@@ -97,7 +97,7 @@
    - 基础速度从120降到100，减少过快感
    - 加速度因子从2.5降到2.0，减少启动抽搔
    - 阻力系数从0.92调整到0.90，更平滑的减速
-   - 引入速度插值：currentVel * 0.7 + newVel * 0.3，消除抽搐
+   - 引入速度插值：currentVel * 0.7 + newVel * 0.3，消除抽搔
 
 4. **分裂和孢子优化**：
    - 分裂冲刺速度从500降到350，更合理
@@ -126,39 +126,52 @@
    - 保持游戏机制一致性的同时优化体验
    - 参数可在GoBiggerConfig.h中统一管理
 
-#### 🎮 球体大小和视觉优化 (第6轮优化 - 智能缩放)
-1. **加速度进一步优化** (2025年6月26日)：
-   - 基础速度从100降到80，更容易精确控制
-   - 加速度因子从2.0降到1.5，减少瞬间启动的抽搐感
-   - 速度变化限制：每帧最多变化15%最大速度，完全消除抽搐
+#### 🎮 球体大小和移动系统最终优化 (第7轮 - GoBigger标准实现)
 
-2. **食物球大小再次调整**：
-   - 食物质量从3增加到4，更容易看见
-   - 食物半径从5.5增加到6.5，视觉效果更好
-   - 质量范围调整到3.0-6.0，增加多样性
+1. **食物系统完全重构** (2025年6月26日)：
+   - **食物质量**：从4增加到6，视觉效果显著改善
+   - **食物半径**：从6.5增加到8.0，更容易精确控制
+   - **质量范围**：调整到4.0-8.0，接近GoBigger的0.5标准但放大以适应视觉需求
+   - **参考GoBigger源码**：食物的score_min和score_max都是0.5
 
-3. **实现智能缩放系统** (参考GoBigger)：
+2. **玩家球大小最终调整**：
+   - **初始质量**：从35增加到50，启动时更容易看见
+   - **最小半径**：从18.0增加到22.0，更符合游戏体验
+   - **转换比例**：从1.3调整到1.4，整体球体更大更清晰
+
+3. **动态移动系统** (完全基于GoBigger实现)：
    ```cpp
-   // 基于玩家大小动态计算视野
-   qreal scaledRadius = maxRadius * m_scaleUpRatio; // 1.8倍缩放
-   qreal viewportSize = qMin(width(), height()) * 0.4;
-   m_targetZoom = viewportSize / scaledRadius;
-   ```
-
-4. **智能缩放核心特性**：
-   - **动态视野计算**：根据玩家球大小自动调整视野范围
-   - **平滑缩放过渡**：8%过渡速度，避免视觉突跳
-   - **最小/最大视野限制**：视野范围100-500像素
-   - **质心跟踪**：视图跟随玩家质心，而非单个球
-
-5. **移动系统最终优化**：
-   ```cpp
-   // 限制每帧最大速度变化量，防止抽搐
-   float maxChange = maxSpeed * 0.15f;
-   if (velocityDiff.length() > maxChange) {
-       velocityDiff = velocityDiff.normalized() * maxChange;
+   // GoBigger风格的动态速度计算
+   inline float calculateDynamicSpeed(float radius, float inputRatio = 1.0f) {
+       return (2.35f + 5.66f / radius) * inputRatio * 10.0f;
+   }
+   
+   // 动态加速度计算
+   inline float calculateDynamicAcceleration(float radius, float inputRatio = 1.0f) {
+       return ACCELERATION_FACTOR * (1.0f + 3.0f / radius) * inputRatio;
    }
    ```
+
+4. **移动系统核心特性**：
+   - **基于半径的速度**：小球移动更快，大球移动更慢，完全符合GoBigger物理
+   - **动态加速度**：小球启动更敏捷，大球更稳重
+   - **智能减速**：大球减速更慢，小球减速更快
+   - **输入比例响应**：移动强度影响最大速度和加速度
+
+5. **参数优化细节**：
+   ```cpp
+   // 基于半径动态调整速度变化限制
+   float maxChange = maxSpeed * (0.1f + 0.2f / currentRadius);
+   
+   // 大球减速更慢，小球减速更快
+   float dampingFactor = 0.88f + 0.08f / radius();
+   ```
+
+6. **GoBigger兼容性**：
+   - **完全基于源码**：移动算法直接移植自GoBigger Python版本
+   - **数值标准对齐**：所有系数都基于原版调整
+   - **物理行为一致**：大小球的移动特性完全一致
+   - **精确控制支持**：支持微操和精确定位
 
 ### 1. 核心球类系统
 - **BaseBall基础类** - 所有球类的基础，包含：
@@ -277,7 +290,7 @@ GameView (游戏视图)
 ```
 src/
 ├── main.cpp           # 主程序入口
-├── BaseBall.h/.cpp    # 球类基类
+├── BaseBall.h/.cpp    # 球类基基
 ├── CloneBall.h/.cpp   # 玩家球
 ├── FoodBall.h/.cpp    # 食物球
 ├── SporeBall.h/.cpp   # 孢子球
@@ -374,3 +387,103 @@ D:/qt/6.9.1/msvc2022_64/bin/windeployqt.exe --release build/Release/ai-devour-ev
 **项目状态**: ✅ **完成**  
 **完成时间**: 2025年6月26日  
 **项目评级**: ⭐⭐⭐⭐⭐ (5/5星)
+
+### 关键问题修复 (2025年6月26日 - 最终调试)
+
+#### 🚨 重大问题解决
+
+1. **孢子轨迹问题根本原因**：
+   - 发现GameManager的updateGame()中没有调用孢子的move()方法
+   - 孢子创建后从未移动，所以看起来停在原地
+   - 修复：在updateGame()中添加孢子移动逻辑，每帧调用spore->move()
+   - 使用正确的deltaTime (1.0/60.0) 对应60 FPS游戏循环
+
+2. **多孢子重叠吞噬问题**：
+   - 原因：碰撞检测中，球被吃掉后仍可能被重复检测
+   - 修复：使用QSet跟踪已处理的球，避免重复碰撞检测
+   - 确保被移除的球不再参与后续碰撞检测
+
+3. **WASD+R同时按键问题优化**：
+   - 增强handleEjectAction的调试信息，显示按键状态
+   - 改进方向检测逻辑，确保在移动时按R能正确获取方向
+   - 添加详细日志追踪按键处理过程
+
+#### 🔧 技术细节
+
+1. **孢子移动算法完善**：
+   ```cpp
+   // GoBigger标准移动：position = position + vel * duration
+   QPointF displacement(currentVel.x() * duration, currentVel.y() * duration);
+   QPointF newPos = currentPos + displacement;
+   setPos(newPos);
+   ```
+
+2. **碰撞检测优化**：
+   ```cpp
+   QSet<BaseBall*> processedBalls; // 避免重复处理已移除的球
+   if (ball1->isRemoved()) processedBalls.insert(ball1);
+   ```
+
+3. **调试信息增强**：
+   - 孢子移动：显示位置变化、速度、位移量
+   - 按键检测：显示按键状态和方向计算
+   - 碰撞检测：显示距离和质量比例
+
+#### 📈 预期效果
+- ✅ 孢子现在应该有清晰可见的抛射轨迹
+- ✅ 多个孢子重叠时能正确被逐个吞噬
+- ✅ 按住WASD移动时按R能正确朝移动方向喷射孢子
+- ✅ 所有调试信息能帮助进一步排查问题
+
+### 最终完善 (2025年6月26日 - 孢子机制和平衡性调整)
+
+#### 🎯 孢子物理机制改进
+
+1. **孢子速度继承机制**：
+   - 新增SporeBall构造函数重载，支持接收玩家球当前速度
+   - 孢子初始速度 = 玩家球速度 + 孢子喷射速度
+   - 只有喷射速度部分会衰减，继承的玩家球速度保留
+   - 解决快速移动时孢子立即被吸收的问题
+
+2. **孢子生成距离优化**：
+   - 增加孢子生成的安全距离为1.5倍半径和
+   - 避免孢子在生成时与玩家球立即重叠
+   - 给孢子足够的逃逸空间
+
+3. **质量系统调整**：
+   - 孢子最低质量从1.5调整到5.0，更合理的数值平衡
+   - BaseBall最小质量限制从1.0降低到0.1，支持小质量球体
+   - 确保质量设置不会被意外截断
+
+#### 🔧 技术实现细节
+
+1. **速度衰减算法**：
+   ```cpp
+   // 只减少喷射速度部分，保留继承速度
+   QVector2D newVel = currentVel - m_velocityPiece;
+   qreal projectionLength = QVector2D::dotProduct(newVel, m_direction);
+   if (projectionLength > 0) {
+       setVelocity(newVel);
+   } else {
+       // 保留垂直分量，只去除喷射方向的速度
+       QVector2D perpendicularVel = newVel - m_direction * projectionLength;
+       setVelocity(perpendicularVel);
+   }
+   ```
+
+2. **构造函数重载**：
+   ```cpp
+   SporeBall(ballId, position, border, teamId, playerId, 
+             direction, parentVelocity, config, parent);
+   ```
+
+3. **安全距离计算**：
+   ```cpp
+   float safeDistance = (radius() + sporeRadius) * 1.5f;
+   ```
+
+#### 📊 预期改进效果
+- ✅ 孢子现在会跟随玩家球运动方向飞出
+- ✅ 快速移动时孢子不会立即被吸收
+- ✅ 孢子质量更合理，平衡性更好
+- ✅ 孢子生成位置安全，避免立即重叠

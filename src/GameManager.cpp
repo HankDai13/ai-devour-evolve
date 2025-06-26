@@ -311,6 +311,20 @@ void GameManager::updateGame()
 {
     if (!m_gameRunning) return;
     
+    // 更新所有球的物理状态
+    qreal deltaTime = 1.0 / 60.0; // 60 FPS
+    
+    for (BaseBall* ball : m_allBalls) {
+        if (ball && !ball->isRemoved()) {
+            // 让每个球自己更新移动（对于孢子球很重要）
+            if (ball->ballType() == BaseBall::SPORE_BALL) {
+                SporeBall* spore = static_cast<SporeBall*>(ball);
+                spore->move(QVector2D(0, 0), deltaTime); // 孢子使用自己的移动逻辑
+            }
+            // 其他类型的球通过physics自动更新
+        }
+    }
+    
     // 检查碰撞
     checkCollisions();
     
@@ -382,15 +396,62 @@ void GameManager::checkCollisions()
 {
     QVector<BaseBall*> allBalls = getAllBalls();
     
+    // 分别处理不同类型的碰撞，优先处理孢子碰撞
+    QVector<SporeBall*> sporesToCheck;
+    QVector<CloneBall*> playersToCheck;
+    
+    // 分类球体
+    for (BaseBall* ball : allBalls) {
+        if (!ball || ball->isRemoved()) continue;
+        
+        if (ball->ballType() == BaseBall::SPORE_BALL) {
+            sporesToCheck.append(static_cast<SporeBall*>(ball));
+        } else if (ball->ballType() == BaseBall::CLONE_BALL) {
+            playersToCheck.append(static_cast<CloneBall*>(ball));
+        }
+    }
+    
+    // 专门处理玩家球与孢子的碰撞（允许一个玩家球吃多个孢子）
+    for (CloneBall* player : playersToCheck) {
+        if (!player || player->isRemoved()) continue;
+        
+        QVector<SporeBall*> sporesToEat;
+        for (SporeBall* spore : sporesToCheck) {
+            if (!spore || spore->isRemoved()) continue;
+            
+            // 检查孢子是否可以被吞噬（避免刚生成就被吞噬）
+            if (spore->canBeEaten() && player->collidesWith(spore) && player->canEat(spore)) {
+                sporesToEat.append(spore);
+            }
+        }
+        
+        // 一次性吃掉所有可以吃的孢子
+        for (SporeBall* spore : sporesToEat) {
+            if (!spore->isRemoved()) {
+                qDebug() << "Player" << player->ballId() << "eating spore" << spore->ballId();
+                player->eat(spore);
+            }
+        }
+    }
+    
+    // 然后处理其他类型的碰撞
     for (int i = 0; i < allBalls.size(); ++i) {
         for (int j = i + 1; j < allBalls.size(); ++j) {
             BaseBall* ball1 = allBalls[i];
             BaseBall* ball2 = allBalls[j];
             
-            if (ball1 && ball2 && !ball1->isRemoved() && !ball2->isRemoved()) {
-                if (ball1->collidesWith(ball2)) {
-                    checkCollisionsBetween(ball1, ball2);
-                }
+            if (!ball1 || !ball2 || ball1->isRemoved() || ball2->isRemoved()) {
+                continue;
+            }
+            
+            // 跳过已经处理过的孢子碰撞
+            if ((ball1->ballType() == BaseBall::CLONE_BALL && ball2->ballType() == BaseBall::SPORE_BALL) ||
+                (ball1->ballType() == BaseBall::SPORE_BALL && ball2->ballType() == BaseBall::CLONE_BALL)) {
+                continue;
+            }
+            
+            if (ball1->collidesWith(ball2)) {
+                checkCollisionsBetween(ball1, ball2);
             }
         }
     }
@@ -432,9 +493,23 @@ void GameManager::checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2)
         SporeBall* spore = (ball1->ballType() == BaseBall::SPORE_BALL) ? 
                           static_cast<SporeBall*>(ball1) : static_cast<SporeBall*>(ball2);
         
-        // 检查是否是敌方孢子
-        if (player->teamId() != spore->teamId() && player->canEat(spore)) {
+        qDebug() << "Player-Spore collision detected!" 
+                 << "Player radius:" << player->radius() 
+                 << "Spore radius:" << spore->radius()
+                 << "Player mass:" << player->mass()
+                 << "Spore mass:" << spore->mass()
+                 << "Player team:" << player->teamId()
+                 << "Spore team:" << spore->teamId()
+                 << "Distance:" << player->distanceTo(spore);
+        
+        // 孢子球可以被任何玩家球吞噬（包括自己的），符合GoBigger原版
+        if (player->canEat(spore)) {
+            qDebug() << "Player CAN eat spore - eating now...";
             player->eat(spore);
+        } else {
+            qDebug() << "Player CANNOT eat spore - mass ratio too small"
+                     << "Required ratio:" << GoBiggerConfig::EAT_RATIO
+                     << "Actual ratio:" << (player->mass() / spore->mass());
         }
     }
     
@@ -443,8 +518,15 @@ void GameManager::checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2)
         CloneBall* player1 = static_cast<CloneBall*>(ball1);
         CloneBall* player2 = static_cast<CloneBall*>(ball2);
         
+        // 同队玩家球的处理
+        if (player1->teamId() == player2->teamId() && player1->playerId() == player2->playerId()) {
+            // 检查是否需要刚体碰撞
+            if (player1->shouldRigidCollide(player2)) {
+                player1->rigidCollision(player2);
+            }
+        }
         // 不同队伍的玩家球可以互相吞噬
-        if (player1->teamId() != player2->teamId()) {
+        else if (player1->teamId() != player2->teamId()) {
             if (player1->canEat(player2)) {
                 player1->eat(player2);
             } else if (player2->canEat(player1)) {

@@ -39,7 +39,7 @@ void BaseBall::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
 void BaseBall::setMass(float mass)
 {
     if (mass != m_mass) {
-        m_mass = std::max(1.0f, mass); // 确保质量至少为1
+        m_mass = std::max(0.1f, mass); // 改为最小0.1，允许小质量孢子
         updateRadius();
         emit massChanged(m_mass);
         

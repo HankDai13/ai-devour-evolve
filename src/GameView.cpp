@@ -1,6 +1,7 @@
 #include "GameView.h"
 #include "GameManager.h"
 #include "CloneBall.h"
+#include "SporeBall.h"
 #include "BaseBall.h"
 #include <QGraphicsScene>
 #include <QKeyEvent>
@@ -146,12 +147,16 @@ void GameView::keyPressEvent(QKeyEvent *event)
 {
     m_pressedKeys.insert(event->key());
     
-    // 处理特殊按键
+    qDebug() << "Key pressed:" << event->key() << "Text:" << event->text();
+    
+    // 处理特殊按键 - 立即处理，不依赖于其他按键状态
     switch (event->key()) {
         case Qt::Key_Space:
+            qDebug() << "Space key detected - calling handleSplitAction";
             handleSplitAction();
             break;
         case Qt::Key_R:
+            qDebug() << "R key detected - calling handleEjectAction";
             handleEjectAction();
             break;
         case Qt::Key_P:
@@ -364,19 +369,40 @@ void GameView::handleSplitAction()
 
 void GameView::handleEjectAction()
 {
+    qDebug() << "handleEjectAction called";
+    
     if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+        qDebug() << "No main player or player removed";
         return;
     }
     
+    qDebug() << "Player canEject:" << m_mainPlayer->canEject() 
+             << "Player mass:" << m_mainPlayer->mass();
+    
     if (m_mainPlayer->canEject()) {
+        // 获取当前移动方向，如果没有移动则使用默认方向
         QVector2D ejectDirection = calculateMoveDirection();
+        
+        qDebug() << "Current move direction:" << ejectDirection.x() << ejectDirection.y()
+                 << "Pressed keys count:" << m_pressedKeys.size();
+        
+        // 如果没有移动方向，使用默认向右
         if (ejectDirection.length() < 0.01) {
             ejectDirection = QVector2D(1, 0); // 默认向右喷射
+            qDebug() << "Using default direction (right)";
+        } else {
+            qDebug() << "Using movement direction for ejection";
         }
+        
+        qDebug() << "Ejecting spore in direction:" << ejectDirection.x() << ejectDirection.y();
         
         auto* spore = m_mainPlayer->ejectSpore(ejectDirection);
         if (spore) {
-            qDebug() << "Spore ejected";
+            qDebug() << "Spore ejected successfully at position:" 
+                     << spore->pos().x() << spore->pos().y()
+                     << "with velocity:" << spore->velocity().length();
+        } else {
+            qDebug() << "Failed to create spore";
         }
     } else {
         qDebug() << "Cannot eject: insufficient score";

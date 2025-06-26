@@ -21,7 +21,12 @@ public:
     };
 
     SporeBall(int ballId, const QPointF& position, const Border& border, 
-              int teamId, int playerId, const Config& config = Config(), QGraphicsItem* parent = nullptr);
+              int teamId, int playerId, const QVector2D& direction, const Config& config = Config(), QGraphicsItem* parent = nullptr);
+    
+    // 重载构造函数，可以接收玩家球的当前速度
+    SporeBall(int ballId, const QPointF& position, const Border& border, 
+              int teamId, int playerId, const QVector2D& direction, const QVector2D& parentVelocity, 
+              const Config& config = Config(), QGraphicsItem* parent = nullptr);
     
     ~SporeBall();
 
@@ -29,9 +34,8 @@ public:
     int teamId() const { return m_teamId; }
     int playerId() const { return m_playerId; }
     int remainingLifetime() const { return m_remainingLifetime; }
-    
-    // 设置初始速度
-    void setInitialVelocity(const QVector2D& velocity);
+    QVector2D direction() const { return m_direction; }
+    bool canBeEaten() const { return m_framesSinceCreation > 3; } // 3帧后才能被吞噬
     
     // 重写基类方法
     void move(const QVector2D& direction, qreal duration) override;
@@ -52,7 +56,13 @@ private:
     Config m_config;
     int m_teamId;
     int m_playerId;
+    QVector2D m_direction;          // 孢子移动方向
+    qreal m_initialVelocity;        // 初始速度
+    QVector2D m_velocityPiece;      // 每帧减少的速度
+    int m_moveFrame;                // 移动帧计数
+    int m_velocityZeroFrame;        // 速度衰减到0的帧数
     int m_remainingLifetime;
+    int m_framesSinceCreation;      // 创建后经过的帧数
     QTimer* m_lifetimeTimer;
     
     void initializeTimer();

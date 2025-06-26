@@ -52,6 +52,10 @@ public:
     void mergeWith(CloneBall* other);
     void checkForMerge();
     
+    // 分裂球刚体碰撞 - 新增
+    bool shouldRigidCollide(CloneBall* other) const;
+    void rigidCollision(CloneBall* other);
+    
     // 重写基类方法
     void move(const QVector2D& direction, qreal duration) override;
     bool canEat(BaseBall* other) const override;
@@ -109,12 +113,17 @@ private:
     CloneBall* getSplitParent() const { return m_splitParent; }
     QVector<CloneBall*> getSplitChildren() const { return m_splitChildren; }
     void propagateMovementToGroup(const QVector2D& direction);
+    void addCenteringForce(CloneBall* target); // 新增：向心力方法
+    void applyCenteringForce(); // 新增：应用向心力到自身
     
     // 得分衰减
     void applyScoreDecay();
     
     // 团队颜色
     QColor getTeamColor(int teamId) const;
+    
+    // 方向箭头绘制
+    void drawDirectionArrow(QPainter* painter, const QVector2D& direction, const QColor& color);
 };
 
 #endif // CLONEBALL_H
