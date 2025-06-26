@@ -1,168 +1,427 @@
 #include "GameView.h"
-#include "PlayerCell.h" // 包含头文件
-#include "FoodItem.h" // 添加食物头文件
+#include "GameManager.h"
+#include "CloneBall.h"
+#include "BaseBall.h"
 #include <QGraphicsScene>
 #include <QKeyEvent>
+#include <QMouseEvent>
+#include <QWheelEvent>
 #include <QTimer>
 #include <QSet>
 #include <QColor>
-#include <QRandomGenerator> // 添加随机数生成器
+#include <QVector2D>
 #include <QDebug>
+#include <cmath>
 
-GameView::GameView(QWidget *parent) : QGraphicsView(parent), m_player(nullptr), m_playerSpeed(4.0)
+GameView::GameView(QWidget *parent) 
+    : QGraphicsView(parent)
+    , m_gameManager(nullptr)
+    , m_mainPlayer(nullptr)
+    , m_inputTimer(nullptr)
+    , m_zoomFactor(1.0)
+    , m_followPlayer(true)
+    , m_targetZoom(1.0)
+    , m_minVisionRadius(100.0)     // 最小视野半径
+    , m_maxVisionRadius(500.0)     // 最大视野半径
+    , m_scaleUpRatio(1.8)          // 缩放比例，参考GoBigger
 {
-    // 1. 创建一个"舞台"
-    QGraphicsScene *scene = new QGraphicsScene(this);
-    // 将舞台的范围设置为与窗口一致，800x600
-    scene->setSceneRect(0, 0, 800, 600);
-    // 为场景设置一个浅灰色背景，这有助于彻底解决残影问题
-    scene->setBackgroundBrush(QColor(240, 240, 240));
+    initializeView();
+    initializePlayer();
+    setupConnections();
+}
 
-    // 2. 将我们这个"摄像机"的舞台设置为刚刚创建的scene
-    this->setScene(scene);    // 3. 一些渲染和交互优化
-    this->setRenderHint(QPainter::Antialiasing); // 开启抗锯齿，让圆形更平滑
-    this->setCacheMode(QGraphicsView::CacheBackground);
-    this->setViewportUpdateMode(QGraphicsView::FullViewportUpdate); // 改为全量更新，彻底解决残影问题
-    this->setOptimizationFlags(QGraphicsView::DontSavePainterState | QGraphicsView::DontAdjustForAntialiasing);
-      // 4. 禁用自动视窗调整，防止视窗跟随玩家移动
-    this->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    this->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    this->setDragMode(QGraphicsView::NoDrag);
-      // 5. 启用键盘焦点，这样才能接收键盘事件
-    this->setFocusPolicy(Qt::StrongFocus);
-    this->setFocus();
-      // 6. 创建一个玩家细胞，初始半径为20，放在舞台中央
-    m_player = new PlayerCell(400, 300, 20); // 调整为800x600场景的中央位置
-    scene->addItem(m_player); // 将玩家添加到舞台上！
-    
-    // 连接玩家得分变化信号
-    connect(m_player, &PlayerCell::scoreChanged, this, &GameView::onScoreChanged);
-    
-      // 7. 设置移动更新定时器，恢复到60FPS确保流畅性
-    m_movementTimer = new QTimer(this);
-    connect(m_movementTimer, &QTimer::timeout, this, &GameView::updatePlayerMovement);
-    m_movementTimer->start(16); // 60FPS (1000ms / 60 ≈ 16ms)，确保流畅移动
-    
-    // 8. 设置食物生成定时器，每500毫秒生成一个食物
-    m_foodTimer = new QTimer(this);
-    connect(m_foodTimer, &QTimer::timeout, this, &GameView::generateFood);
-    m_foodTimer->start(500); // 每500毫秒生成一个食物
-    
-    // 9. 初始生成一些食物
-    for (int i = 0; i < 15; ++i) {
-        spawnFoodAtRandomLocation();
+GameView::~GameView()
+{
+    if (m_inputTimer) {
+        m_inputTimer->stop();
+        delete m_inputTimer;
     }
+    
+    if (m_gameManager) {
+        delete m_gameManager;
+    }
+}
+
+void GameView::initializeView()
+{
+    // 创建场景
+    QGraphicsScene *scene = new QGraphicsScene(this);
+    scene->setSceneRect(-500, -500, 1000, 1000); // 更大的游戏世界
+    scene->setBackgroundBrush(QColor(240, 245, 250)); // 浅蓝灰色背景
+    
+    // 设置视图
+    setScene(scene);
+    setRenderHint(QPainter::Antialiasing);
+    setCacheMode(QGraphicsView::CacheBackground);
+    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    setOptimizationFlags(QGraphicsView::DontSavePainterState | QGraphicsView::DontAdjustForAntialiasing);
+    
+    // 禁用滚动条，使用自定义相机控制
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setDragMode(QGraphicsView::NoDrag);
+    
+    // 启用键盘焦点
+    setFocusPolicy(Qt::StrongFocus);
+    setFocus();
+    
+    // 创建游戏管理器
+    GameManager::Config config;
+    config.gameBorder = Border(-500, 500, -500, 500);
+    m_gameManager = new GameManager(scene, config, this);
+    
+    // 创建输入处理定时器
+    m_inputTimer = new QTimer(this);
+    connect(m_inputTimer, &QTimer::timeout, this, &GameView::updateGameView);
+    m_inputTimer->start(16); // 60 FPS
+}
+
+void GameView::initializePlayer()
+{
+    // 先启动游戏
+    if (m_gameManager) {
+        m_gameManager->startGame();
+        qDebug() << "Game started";
+    }
+    
+    // 创建主玩家
+    m_mainPlayer = m_gameManager->createPlayer(0, 0, QPointF(0, 0)); // 团队0，玩家0，中心位置
+    
+    if (m_mainPlayer) {
+        // 设置一个合理的初始质量，让玩家球更大一些
+        m_mainPlayer->setMass(GoBiggerConfig::CELL_MIN_MASS); // 使用新的标准初始质量
+        
+        // 立即将视图中心设置到玩家位置
+        centerOn(m_mainPlayer->pos());
+        
+        qDebug() << "Main player created with ID:" << m_mainPlayer->ballId() 
+                 << "at position:" << m_mainPlayer->pos()
+                 << "with radius:" << m_mainPlayer->radius()
+                 << "with mass:" << m_mainPlayer->mass();
+    } else {
+        qDebug() << "Failed to create main player!";
+    }
+}
+
+void GameView::setupConnections()
+{
+    if (m_gameManager) {
+        connect(m_gameManager, &GameManager::gameStarted, this, &GameView::onGameStarted);
+        connect(m_gameManager, &GameManager::gamePaused, this, &GameView::onGamePaused);
+        connect(m_gameManager, &GameManager::gameReset, this, &GameView::onGameReset);
+        connect(m_gameManager, &GameManager::playerAdded, this, &GameView::onPlayerAdded);
+        connect(m_gameManager, &GameManager::playerRemoved, this, &GameView::onPlayerRemoved);
+    }
+}
+
+void GameView::startGame()
+{
+    if (m_gameManager) {
+        m_gameManager->startGame();
+    }
+}
+
+void GameView::pauseGame()
+{
+    if (m_gameManager) {
+        m_gameManager->pauseGame();
+    }
+}
+
+void GameView::resetGame()
+{
+    if (m_gameManager) {
+        m_gameManager->resetGame();
+        // 重新创建主玩家
+        initializePlayer();
+    }
+}
+
+bool GameView::isGameRunning() const
+{
+    return m_gameManager ? m_gameManager->isGameRunning() : false;
 }
 
 void GameView::keyPressEvent(QKeyEvent *event)
 {
-    // 将按下的键添加到集合中
     m_pressedKeys.insert(event->key());
     
-    // 调用父类的实现，保持其他默认行为
+    // 处理特殊按键
+    switch (event->key()) {
+        case Qt::Key_Space:
+            handleSplitAction();
+            break;
+        case Qt::Key_R:
+            handleEjectAction();
+            break;
+        case Qt::Key_P:
+            if (isGameRunning()) {
+                pauseGame();
+            } else {
+                startGame();
+            }
+            break;
+        case Qt::Key_Escape:
+            resetGame();
+            break;
+    }
+    
     QGraphicsView::keyPressEvent(event);
 }
 
 void GameView::keyReleaseEvent(QKeyEvent *event)
 {
-    // 将释放的键从集合中移除
     m_pressedKeys.remove(event->key());
-    
-    // 调用父类的实现，保持其他默认行为
     QGraphicsView::keyReleaseEvent(event);
 }
 
-void GameView::updatePlayerMovement()
+void GameView::mousePressEvent(QMouseEvent *event)
 {
-    if (!m_player) return;
+    if (event->button() == Qt::LeftButton) {
+        handleSplitAction();
+    } else if (event->button() == Qt::RightButton) {
+        handleEjectAction();
+    }
     
-    QPointF currentPos = m_player->pos();
-    QPointF newPos = currentPos;
-    bool moved = false;
+    QGraphicsView::mousePressEvent(event);
+}
+
+void GameView::wheelEvent(QWheelEvent *event)
+{
+    // 缩放控制
+    const qreal scaleFactor = 1.15;
     
-    // 检查按下的键，更新位置
+    if (event->angleDelta().y() > 0) {
+        // 放大
+        m_zoomFactor *= scaleFactor;
+        scale(scaleFactor, scaleFactor);
+    } else {
+        // 缩小
+        m_zoomFactor /= scaleFactor;
+        scale(1.0 / scaleFactor, 1.0 / scaleFactor);
+    }
+    
+    // 限制缩放范围
+    m_zoomFactor = qBound(0.5, m_zoomFactor, 3.0);
+}
+
+void GameView::updateGameView()
+{
+    processInput();
+    updateCamera();
+}
+
+void GameView::processInput()
+{
+    if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+        return;
+    }
+    
+    QVector2D moveDirection = calculateMoveDirection();
+    
+    if (moveDirection.length() > 0.01) {
+        m_mainPlayer->setMoveDirection(moveDirection);
+    } else {
+        m_mainPlayer->setMoveDirection(QVector2D(0, 0));
+    }
+}
+
+QVector2D GameView::calculateMoveDirection() const
+{
+    QVector2D direction(0, 0);
+    
+    // WASD 或方向键移动
     if (m_pressedKeys.contains(Qt::Key_W) || m_pressedKeys.contains(Qt::Key_Up)) {
-        newPos.setY(newPos.y() - m_playerSpeed); // 向上移动
-        moved = true;
+        direction.setY(direction.y() - 1);
     }
     if (m_pressedKeys.contains(Qt::Key_S) || m_pressedKeys.contains(Qt::Key_Down)) {
-        newPos.setY(newPos.y() + m_playerSpeed); // 向下移动
-        moved = true;
+        direction.setY(direction.y() + 1);
     }
     if (m_pressedKeys.contains(Qt::Key_A) || m_pressedKeys.contains(Qt::Key_Left)) {
-        newPos.setX(newPos.x() - m_playerSpeed); // 向左移动
-        moved = true;
+        direction.setX(direction.x() - 1);
     }
     if (m_pressedKeys.contains(Qt::Key_D) || m_pressedKeys.contains(Qt::Key_Right)) {
-        newPos.setX(newPos.x() + m_playerSpeed); // 向右移动
-        moved = true;
+        direction.setX(direction.x() + 1);
     }
     
-    // 只有在移动时才进行边界检查和位置更新
-    if (moved) {
-        // 边界检查，确保玩家不会移出场景
-        QRectF sceneRect = scene()->sceneRect();
-        qreal radius = m_player->radius();
+    if (direction.length() > 0) {
+        qDebug() << "Movement input detected:" << direction.x() << direction.y();
+    }
+    
+    return direction.length() > 0 ? direction.normalized() : direction;
+}
+
+void GameView::updateCamera()
+{
+    if (!m_followPlayer || !m_mainPlayer || m_mainPlayer->isRemoved()) {
+        return;
+    }
+    
+    // 计算玩家质心位置
+    QPointF centroid = calculatePlayerCentroid();
+    centerOn(centroid);
+    
+    // 计算智能缩放
+    calculateIntelligentZoom();
+    
+    // 应用平滑缩放
+    adjustZoom();
+}
+
+void GameView::calculateIntelligentZoom()
+{
+    if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+        return;
+    }
+    
+    // 计算视野所需的最大半径，参考GoBigger算法
+    qreal maxRadius = calculatePlayerRadius();
+    
+    // 应用最小视野限制
+    maxRadius = qMax(maxRadius, m_minVisionRadius);
+    
+    // 计算缩放后的视野范围
+    qreal scaledRadius = maxRadius * m_scaleUpRatio;
+    
+    // 基于视野范围计算目标缩放比例
+    // 视窗大小的一半作为参考
+    qreal viewportSize = qMin(width(), height()) * 0.4; // 40%的视窗大小
+    m_targetZoom = viewportSize / scaledRadius;
+    
+    // 限制缩放范围
+    m_targetZoom = qBound(0.2, m_targetZoom, 3.0);
+}
+
+qreal GameView::calculatePlayerRadius() const
+{
+    if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+        return m_minVisionRadius;
+    }
+    
+    // 如果玩家只有一个球，直接返回球的半径
+    // 这里简化处理，实际GoBigger会考虑所有分裂的球
+    QPointF centroid = m_mainPlayer->pos();
+    qreal playerRadius = m_mainPlayer->radius();
+    
+    // 模拟GoBigger的计算方式：
+    // 找到距离质心最远的球的边界作为视野半径
+    qreal maxDistance = playerRadius; // 至少包含当前球的半径
+    
+    // 如果有多个分裂球，需要计算更大的视野
+    // 这里简化为根据球的大小动态调整
+    maxDistance = qMax(maxDistance, playerRadius * 1.5);
+    
+    return maxDistance;
+}
+
+QPointF GameView::calculatePlayerCentroid() const
+{
+    if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+        return QPointF(0, 0);
+    }
+    
+    // 简化版本：直接返回主球位置
+    // 实际GoBigger会计算所有分裂球的质心
+    return m_mainPlayer->pos();
+}
+
+void GameView::adjustZoom()
+{
+    // 平滑缩放过渡
+    qreal currentZoom = transform().m11();
+    qreal zoomDiff = m_targetZoom - currentZoom;
+    
+    if (std::abs(zoomDiff) > 0.001) {
+        // 使用更平滑的过渡速度
+        qreal transitionSpeed = 0.08; // 8%的过渡速度，比之前更快
+        qreal newZoom = currentZoom + zoomDiff * transitionSpeed;
         
-        if (newPos.x() - radius < sceneRect.left()) {
-            newPos.setX(sceneRect.left() + radius);
-        }
-        if (newPos.x() + radius > sceneRect.right()) {
-            newPos.setX(sceneRect.right() - radius);
-        }
-        if (newPos.y() - radius < sceneRect.top()) {
-            newPos.setY(sceneRect.top() + radius);
-        }
-        if (newPos.y() + radius > sceneRect.bottom()) {
-            newPos.setY(sceneRect.bottom() - radius);
+        // 重置变换并应用新缩放
+        resetTransform();
+        scale(newZoom, newZoom);
+        m_zoomFactor = newZoom;
+    }
+}
+
+void GameView::handleSplitAction()
+{
+    if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+        return;
+    }
+    
+    if (m_mainPlayer->canSplit()) {
+        QVector2D splitDirection = calculateMoveDirection();
+        if (splitDirection.length() < 0.01) {
+            splitDirection = QVector2D(1, 0); // 默认向右分裂
         }
         
-        // 设置新位置
-        m_player->setPos(newPos);
+        QVector<CloneBall*> newBalls = m_mainPlayer->performSplit(splitDirection);
+        qDebug() << "Split performed, created" << newBalls.size() << "new balls";
+    } else {
+        qDebug() << "Cannot split: insufficient score or cooldown";
     }
 }
 
-void GameView::generateFood()
+void GameView::handleEjectAction()
 {
-    // 检查场景中食物数量，如果少于20个就生成新的
-    QList<QGraphicsItem*> items = scene()->items();
-    int foodCount = 0;
-    for (QGraphicsItem* item : items) {
-        if (qgraphicsitem_cast<FoodItem*>(item)) {
-            foodCount++;
+    if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+        return;
+    }
+    
+    if (m_mainPlayer->canEject()) {
+        QVector2D ejectDirection = calculateMoveDirection();
+        if (ejectDirection.length() < 0.01) {
+            ejectDirection = QVector2D(1, 0); // 默认向右喷射
+        }
+        
+        auto* spore = m_mainPlayer->ejectSpore(ejectDirection);
+        if (spore) {
+            qDebug() << "Spore ejected";
+        }
+    } else {
+        qDebug() << "Cannot eject: insufficient score";
+    }
+}
+
+void GameView::onGameStarted()
+{
+    qDebug() << "Game started - View updated";
+}
+
+void GameView::onGamePaused()
+{
+    qDebug() << "Game paused - View updated";
+}
+
+void GameView::onGameReset()
+{
+    qDebug() << "Game reset - View updated";
+    // 重置相机
+    resetTransform();
+    m_zoomFactor = 1.0;
+}
+
+void GameView::onPlayerAdded(CloneBall* player)
+{
+    qDebug() << "Player added to view:" << player->ballId();
+}
+
+void GameView::onPlayerRemoved(CloneBall* player)
+{
+    qDebug() << "Player removed from view:" << player->ballId();
+    
+    // 如果被移除的是主玩家，寻找替代
+    if (player == m_mainPlayer) {
+        m_mainPlayer = nullptr;
+        
+        // 寻找同队的其他球作为新的主球
+        QVector<CloneBall*> players = m_gameManager->getPlayers();
+        for (CloneBall* p : players) {
+            if (p && !p->isRemoved() && p->teamId() == 0) {
+                m_mainPlayer = p;
+                qDebug() << "New main player:" << m_mainPlayer->ballId();
+                break;
+            }
         }
     }
-    
-    if (foodCount < 20) {
-        spawnFoodAtRandomLocation();
-    }
-}
-
-void GameView::spawnFoodAtRandomLocation()
-{
-    QPointF pos = getRandomFoodLocation();
-    
-    // 随机生成不同大小的食物
-    qreal radius = 5.0 + QRandomGenerator::global()->bounded(8.0); // 5-13像素的随机半径
-    
-    FoodItem *food = new FoodItem(pos.x(), pos.y(), radius);
-    scene()->addItem(food);
-}
-
-QPointF GameView::getRandomFoodLocation()
-{
-    QRectF sceneRect = scene()->sceneRect();
-    
-    // 确保食物不会生成在边缘附近
-    qreal margin = 30;
-    qreal x = sceneRect.left() + margin + QRandomGenerator::global()->bounded(int(sceneRect.width() - 2 * margin));
-    qreal y = sceneRect.top() + margin + QRandomGenerator::global()->bounded(int(sceneRect.height() - 2 * margin));
-    
-    return QPointF(x, y);
-}
-
-void GameView::onScoreChanged(int newScore)
-{
-    // 在控制台输出得分变化（可以后续改为UI显示）
-    qDebug() << "Player Score:" << newScore;
 }

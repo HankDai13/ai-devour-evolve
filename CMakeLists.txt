@@ -55,16 +55,29 @@ set(SOURCES
     src/DemoQtVS.cpp
     src/GameView.cpp
     src/PlayerCell.cpp
-    src/FoodItem.cpp  # 新增食物类
-    # 未来添加更多源文件时在这里列出
+    src/FoodItem.cpp
+    # 新的球类系统
+    src/BaseBall.cpp
+    src/CloneBall.cpp
+    src/FoodBall.cpp
+    src/SporeBall.cpp
+    src/ThornsBall.cpp
+    src/GameManager.cpp
 )
 
 set(HEADERS
     src/DemoQtVS.h
     src/GameView.h
     src/PlayerCell.h
-    src/FoodItem.h    # 新增食物类
-    # 未来添加更多头文件时在这里列出
+    src/FoodItem.h
+    # 新的球类系统
+    src/GoBiggerConfig.h
+    src/BaseBall.h
+    src/CloneBall.h
+    src/FoodBall.h
+    src/SporeBall.h
+    src/ThornsBall.h
+    src/GameManager.h
 )
 
 set(UI_FILES
