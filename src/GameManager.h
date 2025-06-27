@@ -68,8 +68,12 @@ public:
     // 玩家管理
     CloneBall* createPlayer(int teamId, int playerId, const QPointF& position = QPointF());
     void removePlayer(CloneBall* player);
-    QVector<CloneBall*> getPlayers() const { return m_players; }
     CloneBall* getPlayer(int teamId, int playerId) const;
+    QVector<CloneBall*> getPlayers() const { return m_players; }
+    
+    // 同玩家分身球合并检查 - 新增方法
+    void checkPlayerBallsMerging(int teamId, int playerId);
+    QVector<CloneBall*> getPlayerBalls(int teamId, int playerId) const;
 
     // 球管理
     void addBall(BaseBall* ball);

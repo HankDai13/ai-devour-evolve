@@ -398,6 +398,18 @@ void GameManager::updateGame()
     // 检查碰撞 - 使用GoBigger优化算法
     checkCollisionsOptimized();
     
+    // 额外的同玩家分身球合并检查 - 解决复杂分裂后的合并问题
+    QSet<QPair<int, int>> checkedPlayers;
+    for (CloneBall* player : m_players) {
+        if (player && !player->isRemoved()) {
+            QPair<int, int> playerKey(player->teamId(), player->playerId());
+            if (!checkedPlayers.contains(playerKey)) {
+                checkPlayerBallsMerging(player->teamId(), player->playerId());
+                checkedPlayers.insert(playerKey);
+            }
+        }
+    }
+    
     // 清理已移除的球
     QVector<BaseBall*> ballsToRemove;
     for (BaseBall* ball : m_allBalls) {
@@ -875,4 +887,41 @@ void GameManager::optimizeSporeCollisions()
             }
         }
     }
+}
+
+void GameManager::checkPlayerBallsMerging(int teamId, int playerId)
+{
+    QVector<CloneBall*> playerBalls = getPlayerBalls(teamId, playerId);
+    
+    // 对每个球检查与其他球的合并可能性
+    for (int i = 0; i < playerBalls.size(); ++i) {
+        CloneBall* ball1 = playerBalls[i];
+        if (!ball1 || ball1->isRemoved()) continue;
+        
+        for (int j = i + 1; j < playerBalls.size(); ++j) {
+            CloneBall* ball2 = playerBalls[j];
+            if (!ball2 || ball2->isRemoved()) continue;
+            
+            // 检查两球是否可以合并
+            if (ball1->canMergeWith(ball2)) {
+                qDebug() << "GameManager: Auto-merging balls" << ball1->ballId() << "and" << ball2->ballId();
+                ball1->mergeWith(ball2);
+                return; // 一次只合并一对球
+            }
+        }
+    }
+}
+
+QVector<CloneBall*> GameManager::getPlayerBalls(int teamId, int playerId) const
+{
+    QVector<CloneBall*> playerBalls;
+    
+    for (CloneBall* player : m_players) {
+        if (player && !player->isRemoved() && 
+            player->teamId() == teamId && player->playerId() == playerId) {
+            playerBalls.append(player);
+        }
+    }
+    
+    return playerBalls;
 }

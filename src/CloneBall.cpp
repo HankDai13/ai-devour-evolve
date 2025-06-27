@@ -118,13 +118,12 @@ QVector<CloneBall*> CloneBall::performSplit(const QVector2D& direction)
     setScore(splitScore);
     newBall->setScore(splitScore);
     
-    // 应用分裂速度 - 参考GoBigger的分裂速度计算
-    float splitVelMagnitude = calculateSplitVelocityFromSplit(radius());
-    QVector2D splitVelocity = splitDir * splitVelMagnitude;
+    // GoBigger风格分裂速度：继承原球的移动速度，而不是设置分裂推力
+    QVector2D originalVelocity = velocity();
     
-    // 设置分裂速度 - 两个球相反方向
-    applySplitVelocityEnhanced(splitVelocity, splitVelMagnitude, false);
-    newBall->applySplitVelocityEnhanced(-splitVelocity, splitVelMagnitude, false);
+    // 设置分裂速度 - 两个球继承相同的移动速度（GoBigger原版机制）
+    setVelocity(originalVelocity);
+    newBall->setVelocity(originalVelocity);
     
     // 重置分裂计时器
     m_frameSinceLastSplit = 0;
@@ -581,13 +580,6 @@ bool CloneBall::canMergeWith(CloneBall* other) const
     // 必须超过合并延迟时间(使用帧计算，假设60FPS)
     int mergeDelayFrames = GoBiggerConfig::MERGE_DELAY * 60; // 20秒 * 60帧
     if (m_frameSinceLastSplit < mergeDelayFrames || other->frameSinceLastSplit() < mergeDelayFrames) {
-        // 在刚好过冷却期时，打印详细检查信息
-        if (m_frameSinceLastSplit == mergeDelayFrames || other->frameSinceLastSplit() == mergeDelayFrames) {
-            qDebug() << "Ball" << m_ballId << "vs Ball" << other->ballId() 
-                     << "cooldown check: self=" << m_frameSinceLastSplit 
-                     << "other=" << other->frameSinceLastSplit() 
-                     << "required=" << mergeDelayFrames;
-        }
         return false;
     }
     
@@ -597,11 +589,11 @@ bool CloneBall::canMergeWith(CloneBall* other) const
     
     bool canMerge = distance <= mergeDistance;
     
-    // 如果冷却期都过了，打印距离检查信息
-    qDebug() << "Ball" << m_ballId << "vs Ball" << other->ballId() 
-             << "distance check: actual=" << distance 
-             << "required=" << mergeDistance 
-             << "canMerge=" << canMerge;
+    // 只在成功合并时打印日志，减少输出
+    if (canMerge) {
+        qDebug() << "Ball" << m_ballId << "can merge with Ball" << other->ballId() 
+                 << "distance:" << distance << "required:" << mergeDistance;
+    }
     
     return canMerge;
 }
@@ -645,32 +637,37 @@ void CloneBall::checkForMerge()
         qDebug() << "Ball" << m_ballId << "merge cooldown ended, checking for auto-merge";
     }
     
-    // 检查与兄弟球的合并
+    // 检查与所有子球的合并
     for (CloneBall* child : m_splitChildren) {
-        if (canMergeWith(child)) {
+        if (child && !child->isRemoved() && canMergeWith(child)) {
             qDebug() << "Ball" << m_ballId << "auto-merging with child" << child->ballId();
             mergeWith(child);
-            break; // 一次只合并一个
+            return; // 一次只合并一个，下次更新时继续
         }
     }
     
-    // 如果自己是子球，检查与父球和其他兄弟球的合并
-    if (m_splitParent && canMergeWith(m_splitParent)) {
+    // 如果自己是子球，检查与父球的合并
+    if (m_splitParent && !m_splitParent->isRemoved() && canMergeWith(m_splitParent)) {
         qDebug() << "Ball" << m_ballId << "auto-merging with parent" << m_splitParent->ballId();
         m_splitParent->mergeWith(this);
         return; // 自己被合并了，直接返回
     }
     
+    // 检查与所有兄弟球的合并（同一父球的子球）
     if (m_splitParent) {
         QVector<CloneBall*> siblings = m_splitParent->getSplitChildren();
         for (CloneBall* sibling : siblings) {
-            if (sibling != this && canMergeWith(sibling)) {
+            if (sibling && sibling != this && !sibling->isRemoved() && canMergeWith(sibling)) {
                 qDebug() << "Ball" << m_ballId << "auto-merging with sibling" << sibling->ballId();
                 mergeWith(sibling);
-                break; // 一次只合并一个
+                return; // 一次只合并一个
             }
         }
     }
+    
+    // 额外检查：对于没有明确父子关系但同属一个玩家的球
+    // 这解决了多次分裂后分身球关系复杂的情况
+    // TODO: 这里需要从GameManager获取同玩家的所有球进行检查
 }
 
 bool CloneBall::shouldRigidCollide(CloneBall* other) const
@@ -936,9 +933,13 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
         newBall->m_fromThorns = true; // 标记为荆棘分裂
         newBall->m_frameSinceLastSplit = 0; // 重置冷却计数器
         
-        // 设置初始速度：向外扩散，增加速度确保分散效果
-        QVector2D velocity = offset.normalized() * GoBiggerConfig::SPLIT_BOOST_SPEED;
-        newBall->setVelocity(velocity);
+        // 关键修复：设置分裂关系，让荆棘分裂的球能够相互合并
+        newBall->setSplitParent(this);  // 设置父球关系
+        m_splitChildren.append(newBall); // 添加到子球列表
+        
+        // GoBigger风格速度继承：新球继承原球的移动速度，保持统一
+        QVector2D originalVelocity = velocity();
+        newBall->setVelocity(originalVelocity);
         
         newBalls.append(newBall);
     }
