@@ -127,6 +127,19 @@ if(WIN32)
         # 设置为多线程运行库
         set_property(TARGET ${PROJECT_NAME} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
+    # 自动复制Qt DLL到可执行文件目录
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "D:/qt/6.9.1/msvc2022_64/bin/Qt6Core.dll"
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "D:/qt/6.9.1/msvc2022_64/bin/Qt6Gui.dll"
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "D:/qt/6.9.1/msvc2022_64/bin/Qt6Widgets.dll"
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        # 如有其它DLL，继续添加
+    )
 endif()
 
 # 为将来的开发添加一些有用的编译定义
