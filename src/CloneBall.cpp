@@ -55,8 +55,8 @@ void CloneBall::initializeTimers()
 
 bool CloneBall::canSplit() const
 {
-    // 使用GoBigger标准分裂质量
-    return m_mass >= GoBiggerConfig::SPLIT_MIN_MASS && m_frameSinceLastSplit >= m_config.recombineFrame;
+    // 简化分裂判定，只检查质量
+    return m_mass >= GoBiggerConfig::SPLIT_MIN_MASS;
 }
 
 bool CloneBall::canEject() const
