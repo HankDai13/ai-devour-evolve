@@ -663,3 +663,29 @@ void GameView::drawBackground(QPainter *painter, const QRectF &rect)
     // 简单绘制背景，移除额外的剪裁处理
     QGraphicsView::drawBackground(painter, rect);
 }
+
+float GameView::getTotalPlayerScore() const
+{
+    if (!m_gameManager || !m_mainPlayer) {
+        return 0.0f;
+    }
+    
+    // 获取主玩家的团队ID和玩家ID
+    int teamId = m_mainPlayer->teamId();
+    int playerId = m_mainPlayer->playerId();
+    
+    // 遍历所有球，找到属于主玩家的所有分身球
+    QVector<BaseBall*> allBalls = m_gameManager->getAllBalls();
+    float totalScore = 0.0f;
+    
+    for (BaseBall* ball : allBalls) {
+        if (ball && !ball->isRemoved() && ball->ballType() == BaseBall::CLONE_BALL) {
+            CloneBall* cloneBall = static_cast<CloneBall*>(ball);
+            if (cloneBall->teamId() == teamId && cloneBall->playerId() == playerId) {
+                totalScore += cloneBall->score();
+            }
+        }
+    }
+    
+    return totalScore;
+}

@@ -83,7 +83,7 @@ constexpr float DECAY_START_SCORE = 2600.0f;       // 开始衰减的分数 (GoB
 constexpr float DECAY_RATE = 0.00005f;             // 衰减速率 (GoBigger标准)
 
 // 合并参数
-constexpr float RECOMBINE_RADIUS = 3.0f;           // 合并半径倍数
+constexpr float RECOMBINE_RADIUS = 1.1f;           // 合并半径倍数（稍微重叠就合并）
 constexpr int BIG_FOOD_SCORE = 500;                // 大食物分数
 constexpr float BIG_FOOD_RADIUS = 50.0f;           // 大食物半径
 constexpr float BIG_FOOD_SPAWN_RATE = 0.1f;        // 大食物生成概率

@@ -581,6 +581,13 @@ bool CloneBall::canMergeWith(CloneBall* other) const
     // 必须超过合并延迟时间(使用帧计算，假设60FPS)
     int mergeDelayFrames = GoBiggerConfig::MERGE_DELAY * 60; // 20秒 * 60帧
     if (m_frameSinceLastSplit < mergeDelayFrames || other->frameSinceLastSplit() < mergeDelayFrames) {
+        // 在刚好过冷却期时，打印详细检查信息
+        if (m_frameSinceLastSplit == mergeDelayFrames || other->frameSinceLastSplit() == mergeDelayFrames) {
+            qDebug() << "Ball" << m_ballId << "vs Ball" << other->ballId() 
+                     << "cooldown check: self=" << m_frameSinceLastSplit 
+                     << "other=" << other->frameSinceLastSplit() 
+                     << "required=" << mergeDelayFrames;
+        }
         return false;
     }
     
@@ -588,7 +595,15 @@ bool CloneBall::canMergeWith(CloneBall* other) const
     qreal distance = distanceTo(other);
     qreal mergeDistance = (m_radius + other->radius()) * GoBiggerConfig::RECOMBINE_RADIUS;
     
-    return distance <= mergeDistance;
+    bool canMerge = distance <= mergeDistance;
+    
+    // 如果冷却期都过了，打印距离检查信息
+    qDebug() << "Ball" << m_ballId << "vs Ball" << other->ballId() 
+             << "distance check: actual=" << distance 
+             << "required=" << mergeDistance 
+             << "canMerge=" << canMerge;
+    
+    return canMerge;
 }
 
 void CloneBall::mergeWith(CloneBall* other)
@@ -623,9 +638,17 @@ void CloneBall::mergeWith(CloneBall* other)
 
 void CloneBall::checkForMerge()
 {
+    int mergeDelayFrames = GoBiggerConfig::MERGE_DELAY * 60; // 20秒 * 60帧
+    
+    // 如果刚好过了冷却期，打印调试信息
+    if (m_frameSinceLastSplit == mergeDelayFrames) {
+        qDebug() << "Ball" << m_ballId << "merge cooldown ended, checking for auto-merge";
+    }
+    
     // 检查与兄弟球的合并
     for (CloneBall* child : m_splitChildren) {
         if (canMergeWith(child)) {
+            qDebug() << "Ball" << m_ballId << "auto-merging with child" << child->ballId();
             mergeWith(child);
             break; // 一次只合并一个
         }
@@ -633,6 +656,7 @@ void CloneBall::checkForMerge()
     
     // 如果自己是子球，检查与父球和其他兄弟球的合并
     if (m_splitParent && canMergeWith(m_splitParent)) {
+        qDebug() << "Ball" << m_ballId << "auto-merging with parent" << m_splitParent->ballId();
         m_splitParent->mergeWith(this);
         return; // 自己被合并了，直接返回
     }
@@ -641,6 +665,7 @@ void CloneBall::checkForMerge()
         QVector<CloneBall*> siblings = m_splitParent->getSplitChildren();
         for (CloneBall* sibling : siblings) {
             if (sibling != this && canMergeWith(sibling)) {
+                qDebug() << "Ball" << m_ballId << "auto-merging with sibling" << sibling->ballId();
                 mergeWith(sibling);
                 break; // 一次只合并一个
             }
@@ -660,8 +685,9 @@ bool CloneBall::shouldRigidCollide(CloneBall* other) const
     }
     
     // 只有分裂后未达到合并时间的球才会刚体碰撞
-    return (m_frameSinceLastSplit < m_config.recombineFrame || 
-            other->frameSinceLastSplit() < other->m_config.recombineFrame);
+    int mergeDelayFrames = GoBiggerConfig::MERGE_DELAY * 60; // 20秒 * 60帧
+    return (m_frameSinceLastSplit < mergeDelayFrames || 
+            other->frameSinceLastSplit() < mergeDelayFrames);
 }
 
 void CloneBall::rigidCollision(CloneBall* other)
@@ -710,7 +736,8 @@ void CloneBall::addCenteringForce(CloneBall* target)
     }
     
     // 只有在分裂后的重组期间才应用向心力
-    if (m_frameSinceLastSplit >= m_config.recombineFrame) {
+    int mergeDelayFrames = GoBiggerConfig::MERGE_DELAY * 60; // 20秒 * 60帧
+    if (m_frameSinceLastSplit >= mergeDelayFrames) {
         return;
     }
     
@@ -737,7 +764,8 @@ void CloneBall::addCenteringForce(CloneBall* target)
 void CloneBall::applyCenteringForce()
 {
     // 只有在分裂后的重组期间才应用向心力
-    if (m_frameSinceLastSplit >= m_config.recombineFrame) {
+    int mergeDelayFrames = GoBiggerConfig::MERGE_DELAY * 60; // 20秒 * 60帧
+    if (m_frameSinceLastSplit >= mergeDelayFrames) {
         return;
     }
     
@@ -875,19 +903,22 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
     // 3. 确定分裂方向
     QVector2D splitDir = direction.length() > 0.01 ? direction.normalized() : QVector2D(1, 0);
     
-    // 4. 创建新球，均匀分布在周围
+    // 4. 创建新球，第一个在指定方向，其他均匀分布
     for (int i = 0; i < actualNewBalls; ++i) {
-        // 计算位置：均匀分布在圆周上，确保有一个球在右侧水平位置
+        // 计算位置：第一个球在分裂方向上，其他球均匀分布在圆周上
         float angle;
         if (i == 0) {
-            // 第一个新球总是在右侧水平位置
-            angle = 0.0f;
+            // 第一个新球总是在分裂方向上
+            angle = std::atan2(splitDir.y(), splitDir.x());
         } else {
-            // 其他球均匀分布
-            angle = (2.0f * M_PI * i) / actualNewBalls;
+            // 其他球均匀分布，避开第一个球的位置
+            angle = (2.0f * M_PI * (i - 1)) / (actualNewBalls - 1);
+            if (actualNewBalls == 1) {
+                angle = std::atan2(splitDir.y(), splitDir.x());
+            }
         }
         
-        float distance = radius() * 2.5f; // 分散距离
+        float distance = radius() * 3.5f; // 增加分散距离，避免重叠
         QVector2D offset(std::cos(angle) * distance, std::sin(angle) * distance);
         QPointF newPos = pos() + QPointF(offset.x(), offset.y());
         
@@ -903,13 +934,17 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
         
         newBall->setScore(newBallScore);
         newBall->m_fromThorns = true; // 标记为荆棘分裂
+        newBall->m_frameSinceLastSplit = 0; // 重置冷却计数器
         
-        // 设置初始速度：向外扩散
-        QVector2D velocity = offset.normalized() * GoBiggerConfig::SPLIT_BOOST_SPEED * 0.5f;
+        // 设置初始速度：向外扩散，增加速度确保分散效果
+        QVector2D velocity = offset.normalized() * GoBiggerConfig::SPLIT_BOOST_SPEED;
         newBall->setVelocity(velocity);
         
         newBalls.append(newBall);
     }
+    
+    // 原球也重置冷却计数器
+    m_frameSinceLastSplit = 0;
     
     qDebug() << "Thorns split completed: created" << newBalls.size() 
              << "new balls with score" << newBallScore 

@@ -73,8 +73,9 @@ int main(int argc, char *argv[])
         if (gameView->isGameRunning()) {
             CloneBall* player = gameView->getMainPlayer();
             if (player && !player->isRemoved()) {
-                statusLabel->setText(QString("游戏进行中 - 分数: %1 | 大小: %2")
-                    .arg(QString::number(player->score(), 'f', 1))
+                float totalScore = gameView->getTotalPlayerScore();
+                statusLabel->setText(QString("游戏进行中 - 总分数: %1 | 主球大小: %2")
+                    .arg(QString::number(totalScore, 'f', 1))
                     .arg(QString::number(player->radius(), 'f', 1)));
             } else {
                 statusLabel->setText("游戏进行中 - 玩家已被淘汰");
