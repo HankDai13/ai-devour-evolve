@@ -1,6 +1,8 @@
-#include "QuadTree.h"
-#include "HumanController.h"
-#include "AIController.h"
+#pragma once
+
+#include <QRectF>
+#include <cmath>
+
 template<typename T>
 QuadTree<T>::QuadTree(float x, float y, float w, float h, int depth, int maxDepth)
     : x(x), y(y), w(w), h(h), depth(depth), maxDepth(maxDepth), divided(false) {}
@@ -21,7 +23,6 @@ void QuadTree<T>::insert(float px, float py, T* data) {
 
 template<typename T>
 void QuadTree<T>::queryRange(const QRectF& range, std::vector<T*>& results) {
-    // 如果当前节点与查询范围不相交，直接返回
     if (!QRectF(x, y, w, h).intersects(range)) return;
     for (auto* obj : objects) {
         if (contains(range, x, y)) results.push_back(obj);
@@ -48,6 +49,3 @@ template<typename T>
 bool QuadTree<T>::contains(const QRectF& range, float px, float py) const {
     return range.contains(px, py);
 }
-
-// 注意：模板类的实现需要在头文件中（或加 explicit 实例化），否则链接会失败。
-// 可直接把 QuadTree.cpp 的实现复制到 QuadTree.h 里。

@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <!-- Add image/sound resources here if needed -->
+    </qresource>
+</RCC>
