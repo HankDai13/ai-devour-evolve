@@ -6,6 +6,7 @@
 #include <QVector>
 
 class SporeBall; // 前向声明
+class ThornsBall; // 前向声明
 
 class CloneBall : public BaseBall
 {
@@ -46,6 +47,7 @@ public:
     void setMoveDirection(const QVector2D& direction);
     void applyGoBiggerMovement(const QVector2D& playerInput, const QVector2D& centerForce); // 新增：GoBigger风格移动
     QVector<CloneBall*> performSplit(const QVector2D& direction);
+    QVector<CloneBall*> performThornsSplit(const QVector2D& direction, int totalPlayerBalls); // 新增：吃荆棘球后的特殊分裂
     SporeBall* ejectSpore(const QVector2D& direction);
     
     // 合并机制
@@ -65,6 +67,7 @@ public:
 signals:
     void splitPerformed(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
     void sporeEjected(CloneBall* ball, SporeBall* spore);
+    void thornsEaten(CloneBall* ball, ThornsBall* thorns); // 新增：吃荆棘球信号
 
 protected:
     QColor getBallColor() const override;

@@ -1,6 +1,7 @@
 #include "CloneBall.h"
 #include "SporeBall.h"
 #include "FoodBall.h"
+#include "ThornsBall.h"
 #include "GoBiggerConfig.h"
 #include <QRandomGenerator>
 #include <QGraphicsScene>
@@ -314,8 +315,24 @@ bool CloneBall::canEat(BaseBall* other) const
 void CloneBall::eat(BaseBall* other)
 {
     if (canEat(other)) {
-        BaseBall::eat(other);
-        qDebug() << "CloneBall" << ballId() << "ate" << other->ballId() << "gaining score:" << other->score();
+        // 特殊处理：吃荆棘球会触发特殊分裂
+        if (other->ballType() == BaseBall::THORNS_BALL) {
+            ThornsBall* thorns = static_cast<ThornsBall*>(other);
+            
+            qDebug() << "CloneBall" << ballId() << "eating thorns ball" << thorns->ballId() 
+                     << "- triggering special split";
+            
+            // 先增加分数
+            BaseBall::eat(other);
+            
+            // 触发荆棘分裂
+            // 注意：这里需要通过信号机制来获取准确的玩家球数量
+            // 暂时发送信号，让GameManager处理
+            emit thornsEaten(this, thorns);
+        } else {
+            BaseBall::eat(other);
+            qDebug() << "CloneBall" << ballId() << "ate" << other->ballId() << "gaining score:" << other->score();
+        }
     }
 }
 
@@ -822,4 +839,81 @@ void CloneBall::applyGoBiggerMovement(const QVector2D& playerInput, const QVecto
         m_moveDirection = playerInput; // 确保方向箭头正确显示
         updateDirection();
     }
+}
+
+QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, int totalPlayerBalls)
+{
+    QVector<CloneBall*> newBalls;
+    
+    // GoBigger荆棘分裂逻辑：
+    // 1. 计算需要分裂出的新球数量，使总数不超过16个
+    int maxNewBalls = GoBiggerConfig::THORNS_SPLIT_MAX_COUNT;  // 最多分裂出10个新球
+    int maxTotalBalls = GoBiggerConfig::MAX_SPLIT_COUNT;       // 总球数上限16个
+    
+    // 确定实际分裂数量
+    int availableSlots = maxTotalBalls - totalPlayerBalls;
+    int actualNewBalls = std::min(maxNewBalls, availableSlots);
+    
+    if (actualNewBalls <= 0) {
+        qDebug() << "Cannot split from thorns: already at max ball count";
+        return newBalls;
+    }
+    
+    qDebug() << "Thorns split: total balls=" << totalPlayerBalls 
+             << "max new=" << maxNewBalls 
+             << "actual new=" << actualNewBalls;
+    
+    // 2. 计算分数分配
+    float totalScore = m_score;
+    float newBallScore = std::min(static_cast<float>(GoBiggerConfig::THORNS_SPLIT_MAX_SCORE), 
+                                  totalScore / (actualNewBalls + 1)); // +1包括原球
+    
+    // 原球保留剩余分数
+    float remainingScore = totalScore - (newBallScore * actualNewBalls);
+    setScore(remainingScore);
+    
+    // 3. 确定分裂方向
+    QVector2D splitDir = direction.length() > 0.01 ? direction.normalized() : QVector2D(1, 0);
+    
+    // 4. 创建新球，均匀分布在周围
+    for (int i = 0; i < actualNewBalls; ++i) {
+        // 计算位置：均匀分布在圆周上，确保有一个球在右侧水平位置
+        float angle;
+        if (i == 0) {
+            // 第一个新球总是在右侧水平位置
+            angle = 0.0f;
+        } else {
+            // 其他球均匀分布
+            angle = (2.0f * M_PI * i) / actualNewBalls;
+        }
+        
+        float distance = radius() * 2.5f; // 分散距离
+        QVector2D offset(std::cos(angle) * distance, std::sin(angle) * distance);
+        QPointF newPos = pos() + QPointF(offset.x(), offset.y());
+        
+        // 创建新球
+        CloneBall* newBall = new CloneBall(
+            m_ballId + 1000 + i, // 临时ID策略
+            newPos,
+            m_border,
+            m_teamId,
+            m_playerId,
+            m_config
+        );
+        
+        newBall->setScore(newBallScore);
+        newBall->m_fromThorns = true; // 标记为荆棘分裂
+        
+        // 设置初始速度：向外扩散
+        QVector2D velocity = offset.normalized() * GoBiggerConfig::SPLIT_BOOST_SPEED * 0.5f;
+        newBall->setVelocity(velocity);
+        
+        newBalls.append(newBall);
+    }
+    
+    qDebug() << "Thorns split completed: created" << newBalls.size() 
+             << "new balls with score" << newBallScore 
+             << "each, original ball score:" << m_score;
+    
+    return newBalls;
 }

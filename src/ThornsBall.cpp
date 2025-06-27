@@ -1,5 +1,6 @@
 #include "ThornsBall.h"
 #include "CloneBall.h"
+#include "SporeBall.h"
 #include "GoBiggerConfig.h"
 #include <QRandomGenerator>
 #include <QPainter>
@@ -11,6 +12,9 @@ ThornsBall::ThornsBall(int ballId, const QPointF& position, const Border& border
                        const Config& config, QGraphicsItem* parent)
     : BaseBall(ballId, position, GoBiggerConfig::THORNS_MIN_SCORE, border, THORNS_BALL, parent)
     , m_config(config)
+    , m_isMoving(false)
+    , m_velocity(0, 0)
+    , m_moveFramesLeft(0)
 {
     // 生成随机分数
     float minScore = GoBiggerConfig::THORNS_MIN_SCORE;
@@ -24,11 +28,25 @@ ThornsBall::ThornsBall(int ballId, const QPointF& position, const Border& border
 
 void ThornsBall::move(const QVector2D& direction, qreal duration)
 {
-    Q_UNUSED(direction)
-    Q_UNUSED(duration)
-    
-    // 荆棘球不能移动
-    qDebug() << "ThornsBall cannot move";
+    // GoBigger荆棘球移动机制：只有吃孢子后才能移动
+    if (m_isMoving && m_moveFramesLeft > 0) {
+        updateMovement();
+        
+        // 应用移动
+        QPointF currentPos = pos();
+        QPointF newPos = currentPos + QPointF(m_velocity.x() * duration, m_velocity.y() * duration);
+        
+        // 边界检查
+        if (m_border.contains(newPos)) {
+            setPos(newPos);
+        }
+        
+        m_moveFramesLeft--;
+        if (m_moveFramesLeft <= 0) {
+            m_isMoving = false;
+            m_velocity = QVector2D(0, 0);
+        }
+    }
 }
 
 bool ThornsBall::canEat(BaseBall* other) const
@@ -56,38 +74,8 @@ void ThornsBall::causeCollisionDamage(CloneBall* ball)
     qDebug() << "ThornsBall collision with CloneBall" << ball->ballId() 
              << "Original score:" << ball->score();
     
-    // 计算伤害 - 降低伤害比例
-    float damage = ball->score() * GoBiggerConfig::THORNS_DAMAGE_RATIO; // 使用配置伤害比例
-    float newScore = ball->score() - damage;
-    
-    // 提高移除阈值，防止直接消失
-    if (newScore < GoBiggerConfig::CELL_MIN_SCORE) { 
-        // 如果分数太低，设置为最小值而不是直接移除
-        newScore = GoBiggerConfig::CELL_MIN_SCORE;
-        qDebug() << "Ball score set to minimum by thorns";
-    }
-    
-    // 减少分数
-    ball->setScore(newScore);
-    qDebug() << "Ball damaged by thorns, new score:" << newScore;
-    
-    // 如果球足够大，触发分裂
-    if (ball->score() > GoBiggerConfig::SPLIT_MIN_SCORE * 2) { // 调整分裂阈值
-        // 计算分裂数量
-        QRandomGenerator* rng = QRandomGenerator::global();
-        int splitParts = rng->bounded(2, 4); // 分裂成2-3个部分
-        
-        // 计算每个分裂部分的分数
-        float splitScore = ball->score() / splitParts;
-        
-        // 设置原球的新分数
-        ball->setScore(splitScore);
-        
-        qDebug() << "Ball force-split by thorns into" << splitParts << "parts";
-        
-        // 发送信号通知需要分裂
-        emit thornsCollision(this, ball);
-    }
+    // GoBigger标准：如果玩家球分数不足以吃荆棘球，碰撞不产生任何影响
+    qDebug() << "Player ball cannot eat thorns ball - no collision effect";
 }
 
 QColor ThornsBall::getBallColor() const
@@ -171,4 +159,45 @@ void ThornsBall::drawThorns(QPainter* painter)
         
         painter->drawPolygon(thorn);
     }
+}
+
+// ============ GoBigger荆棘球特殊功能实现 ============
+
+void ThornsBall::eatSpore(SporeBall* spore)
+{
+    if (!spore || spore->isRemoved()) return;
+    
+    qDebug() << "Thorns ball" << ballId() << "eating spore" << spore->ballId();
+    
+    // 获取孢子的运动方向
+    QVector2D sporeVelocity = spore->velocity();
+    if (sporeVelocity.length() > 0.1f) {
+        applySporeMovement(sporeVelocity.normalized());
+    }
+    
+    // 增加分数
+    setScore(score() + spore->score());
+    
+    // 标记孢子为已移除
+    spore->remove();
+}
+
+void ThornsBall::applySporeMovement(const QVector2D& sporeDirection)
+{
+    // GoBigger标准：荆棘球获得10的初速度
+    m_velocity = sporeDirection * GoBiggerConfig::THORNS_SPORE_SPEED;
+    m_moveFramesLeft = GoBiggerConfig::THORNS_SPORE_DECAY_FRAMES;
+    m_isMoving = true;
+    
+    qDebug() << "Thorns ball" << ballId() << "gained velocity:" 
+             << m_velocity.x() << m_velocity.y() << "for" << m_moveFramesLeft << "frames";
+}
+
+void ThornsBall::updateMovement()
+{
+    if (!m_isMoving || m_moveFramesLeft <= 0) return;
+    
+    // GoBigger标准：速度在20帧内均匀衰减到0
+    float decayFactor = static_cast<float>(m_moveFramesLeft) / GoBiggerConfig::THORNS_SPORE_DECAY_FRAMES;
+    m_velocity = m_velocity * decayFactor;
 }

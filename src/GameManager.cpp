@@ -4,9 +4,11 @@
 #include "SporeBall.h"
 #include "ThornsBall.h"
 #include "GoBiggerConfig.h"
+#include "QuadTree.h"
 #include <QGraphicsScene>
 #include <QDebug>
 #include <cmath>
+#include <memory>
 
 GameManager::GameManager(QGraphicsScene* scene, const Config& config, QObject* parent)
     : QObject(parent)
@@ -18,7 +20,14 @@ GameManager::GameManager(QGraphicsScene* scene, const Config& config, QObject* p
     , m_thornsTimer(nullptr)
     , m_nextBallId(1)
     , m_foodRefreshFrameCount(0)
+    , m_thornsRefreshFrameCount(0)
 {
+    // 初始化四叉树 - 使用游戏边界
+    QRectF bounds(m_config.gameBorder.minx, m_config.gameBorder.miny,
+                  m_config.gameBorder.maxx - m_config.gameBorder.minx,
+                  m_config.gameBorder.maxy - m_config.gameBorder.miny);
+    m_quadTree = std::make_unique<QuadTree>(bounds, 6, 8); // 最大深度6，每节点最多8个球
+    
     initializeTimers();
 }
 
@@ -55,13 +64,19 @@ void GameManager::startGame()
             addBall(food);
         }
         
-        // 荆棘初始化保持不变
-        for (int i = 0; i < m_config.maxThornsCount / 2; ++i) {
-            spawnThorns();
+        // GoBigger风格初始化：生成初始数量的荆棘球
+        for (int i = 0; i < m_config.initThornsCount; ++i) {
+            QPointF pos = generateRandomThornsPosition();
+            int score = m_config.thornsScoreMin + 
+                       QRandomGenerator::global()->bounded(m_config.thornsScoreMax - m_config.thornsScoreMin + 1);
+            ThornsBall* thorns = new ThornsBall(getNextBallId(), pos, m_config.gameBorder);
+            thorns->setScore(score);
+            addBall(thorns);
+            qDebug() << "Created thorns ball" << thorns->ballId() << "at" << pos << "with score" << score;
         }
         
         emit gameStarted();
-        qDebug() << "Game started with" << m_config.initFoodCount << "initial food balls";
+        qDebug() << "Game started with" << m_config.initFoodCount << "initial food balls and" << m_config.initThornsCount << "initial thorns balls";
     }
 }
 
@@ -84,6 +99,7 @@ void GameManager::resetGame()
     clearAllBalls();
     m_nextBallId = 1;
     m_foodRefreshFrameCount = 0;  // 重置食物刷新计数器
+    m_thornsRefreshFrameCount = 0;  // 重置荆棘刷新计数器
     
     emit gameReset();
     qDebug() << "Game reset";
@@ -284,10 +300,10 @@ void GameManager::initializeTimers()
     connect(m_foodTimer, &QTimer::timeout, this, &GameManager::spawnFood);
     m_foodTimer->setInterval(m_config.gameUpdateInterval); // 与游戏更新同频，在spawnFood内部按帧数控制
     
-    // 荆棘生成定时器
+    // 荆棘生成定时器 (GoBigger风格：基于帧数)
     m_thornsTimer = new QTimer(this);
     connect(m_thornsTimer, &QTimer::timeout, this, &GameManager::spawnThorns);
-    m_thornsTimer->setInterval(30000 / m_config.thornsSpawnRate); // 每30秒生成指定数量
+    m_thornsTimer->setInterval(m_config.gameUpdateInterval); // 与游戏更新同频，在spawnThorns内部按帧数控制
 }
 
 void GameManager::connectBallSignals(BaseBall* ball)
@@ -300,6 +316,11 @@ void GameManager::connectBallSignals(BaseBall* ball)
     if (ball->ballType() == BaseBall::THORNS_BALL) {
         ThornsBall* thorns = static_cast<ThornsBall*>(ball);
         connect(thorns, &ThornsBall::thornsCollision, this, &GameManager::handleThornsCollision);
+    } else if (ball->ballType() == BaseBall::CLONE_BALL) {
+        CloneBall* clone = static_cast<CloneBall*>(ball);
+        connect(clone, &CloneBall::splitPerformed, this, &GameManager::handlePlayerSplit);
+        connect(clone, &CloneBall::sporeEjected, this, &GameManager::handleSporeEjected);
+        connect(clone, &CloneBall::thornsEaten, this, &GameManager::handleThornsEaten);
     }
 }
 
@@ -374,8 +395,8 @@ void GameManager::updateGame()
         }
     }
     
-    // 检查碰撞
-    checkCollisions();
+    // 检查碰撞 - 使用GoBigger优化算法
+    checkCollisionsOptimized();
     
     // 清理已移除的球
     QVector<BaseBall*> ballsToRemove;
@@ -427,10 +448,39 @@ void GameManager::spawnFood()
 
 void GameManager::spawnThorns()
 {
-    if (m_thornsBalls.size() < m_config.maxThornsCount) {
-        QPointF pos = generateRandomThornsPosition();
-        ThornsBall* thorns = new ThornsBall(getNextBallId(), pos, m_config.gameBorder);
-        addBall(thorns);
+    // GoBigger风格的荆棘补充机制
+    m_thornsRefreshFrameCount++;
+    
+    // 每隔指定帧数进行一次补充
+    if (m_thornsRefreshFrameCount >= m_config.thornsRefreshFrames) {
+        int currentThornsCount = m_thornsBalls.size();
+        int leftNum = m_config.maxThornsCount - currentThornsCount;
+        
+        if (leftNum > 0) {
+            // 计算需要补充的荆棘数量（GoBigger原版公式）
+            int todoNum = std::min(
+                static_cast<int>(std::ceil(m_config.thornsRefreshPercent * leftNum)), 
+                leftNum
+            );
+            
+            // 批量生成荆棘球
+            for (int i = 0; i < todoNum; ++i) {
+                QPointF pos = generateRandomThornsPosition();
+                // 使用GoBigger标准的分数范围
+                int score = m_config.thornsScoreMin + 
+                           QRandomGenerator::global()->bounded(m_config.thornsScoreMax - m_config.thornsScoreMin + 1);
+                ThornsBall* thorns = new ThornsBall(getNextBallId(), pos, m_config.gameBorder);
+                thorns->setScore(score);
+                addBall(thorns);
+            }
+            
+            if (todoNum > 0) {
+                qDebug() << "Spawned" << todoNum << "thorns balls, total:" << (currentThornsCount + todoNum);
+            }
+        }
+        
+        // 重置计数器
+        m_thornsRefreshFrameCount = 0;
     }
 }
 
@@ -577,7 +627,23 @@ void GameManager::checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2)
         }
     }
     
-    // 玩家球 vs 荆棘球
+    // 荆棘球 vs 孢子球 (GoBigger特殊机制)
+    else if ((ball1->ballType() == BaseBall::THORNS_BALL && ball2->ballType() == BaseBall::SPORE_BALL) ||
+             (ball1->ballType() == BaseBall::SPORE_BALL && ball2->ballType() == BaseBall::THORNS_BALL)) {
+        
+        ThornsBall* thorns = (ball1->ballType() == BaseBall::THORNS_BALL) ? 
+                            static_cast<ThornsBall*>(ball1) : static_cast<ThornsBall*>(ball2);
+        SporeBall* spore = (ball1->ballType() == BaseBall::SPORE_BALL) ? 
+                          static_cast<SporeBall*>(ball1) : static_cast<SporeBall*>(ball2);
+        
+        qDebug() << "Thorns-Spore collision detected! Thorns" << thorns->ballId() 
+                 << "eating spore" << spore->ballId();
+        
+        // 荆棘球吃孢子，获得移动能力
+        thorns->eatSpore(spore);
+    }
+    
+    // 玩家球 vs 荆棘球 (GoBigger特殊机制：玩家可以吃荆棘)
     else if ((ball1->ballType() == BaseBall::CLONE_BALL && ball2->ballType() == BaseBall::THORNS_BALL) ||
              (ball1->ballType() == BaseBall::THORNS_BALL && ball2->ballType() == BaseBall::CLONE_BALL)) {
         
@@ -586,7 +652,25 @@ void GameManager::checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2)
         ThornsBall* thorns = (ball1->ballType() == BaseBall::THORNS_BALL) ? 
                             static_cast<ThornsBall*>(ball1) : static_cast<ThornsBall*>(ball2);
         
-        thorns->causeCollisionDamage(player);
+        // GoBigger机制：玩家可以吃荆棘球，触发特殊分裂
+        if (player->canEat(thorns)) {
+            qDebug() << "Player" << player->ballId() << "eating thorns" << thorns->ballId() 
+                     << "- will trigger special split";
+            
+            // 需要传递当前玩家的总球数，这里先用队友总数估算
+            int totalPlayerBalls = 0;
+            for (CloneBall* p : m_players) {
+                if (p && !p->isRemoved() && p->teamId() == player->teamId() && p->playerId() == player->playerId()) {
+                    totalPlayerBalls++;
+                }
+            }
+            
+            // 先吃荆棘球 - eat方法内部会调用performThornsSplit
+            player->eat(thorns);
+        } else {
+            // 如果不能吃，则荆棘球造成伤害
+            thorns->causeCollisionDamage(player);
+        }
     }
 }
 
@@ -623,8 +707,44 @@ void GameManager::handleThornsCollision(ThornsBall* thorns, CloneBall* ball)
     Q_UNUSED(thorns)
     Q_UNUSED(ball)
     
-    // 在这里可以添加额外的荆棘碰撞处理逻辑
-    qDebug() << "Thorns collision handled";
+    // 荆棘碰撞不产生任何影响（GoBigger标准：只有能吃才有效果）
+    qDebug() << "Thorns collision - no effect";
+}
+
+void GameManager::handleThornsEaten(CloneBall* ball, ThornsBall* thorns)
+{
+    if (!ball || !thorns) return;
+    
+    qDebug() << "GameManager: Player" << ball->ballId() << "ate thorns" << thorns->ballId();
+    
+    // 计算当前玩家的总球数
+    int totalPlayerBalls = 0;
+    for (CloneBall* p : m_players) {
+        if (p && !p->isRemoved() && p->teamId() == ball->teamId() && p->playerId() == ball->playerId()) {
+            totalPlayerBalls++;
+        }
+    }
+    
+    qDebug() << "Player has" << totalPlayerBalls << "total balls before thorns split";
+    
+    // 执行荆棘分裂
+    QVector<CloneBall*> newBalls = ball->performThornsSplit(QVector2D(1, 0), totalPlayerBalls);
+    
+    // 添加新球到管理器
+    for (CloneBall* newBall : newBalls) {
+        addBall(newBall);
+        m_players.append(newBall);
+        
+        // 连接新球的信号
+        connectBallSignals(newBall);
+    }
+    
+    qDebug() << "Thorns split completed: created" << newBalls.size() << "new balls";
+    
+    // 发送分裂信号
+    if (!newBalls.isEmpty()) {
+        emit playerAdded(ball); // 通知有新的玩家球
+    }
 }
 
 void GameManager::clearAllBalls()
@@ -648,5 +768,111 @@ void GameManager::removeFromScene(BaseBall* ball)
 {
     if (ball && m_scene && m_scene->items().contains(ball)) {
         m_scene->removeItem(ball);
+    }
+}
+
+// ============ GoBigger优化碰撞检测实现 ============
+
+void GameManager::checkCollisionsOptimized()
+{
+    // 重建四叉树 - 每帧重建以确保数据最新
+    QVector<BaseBall*> allBalls = getAllBalls();
+    m_quadTree->rebuild(allBalls);
+    
+    // GoBigger优化策略1: 只检测移动的球体
+    QVector<BaseBall*> movingBalls = getMovingBalls();
+    
+    // 性能统计
+    static int frameCount = 0;
+    frameCount++;
+    if (frameCount % 60 == 0) { // 每60帧输出一次统计
+        qDebug() << "Collision optimization stats:"
+                 << "Total balls:" << allBalls.size()
+                 << "Moving balls:" << movingBalls.size()
+                 << "QuadTree nodes:" << m_quadTree->getNodeCount()
+                 << "QuadTree depth:" << m_quadTree->getMaxDepth();
+    }
+    
+    // 对每个移动的球体，使用四叉树查找可能碰撞的候选者
+    for (BaseBall* movingBall : movingBalls) {
+        if (!movingBall || movingBall->isRemoved()) continue;
+        
+        // 使用四叉树查询可能碰撞的球体
+        QVector<BaseBall*> candidates = m_quadTree->queryCollisions(movingBall);
+        
+        // 检查与候选者的碰撞
+        for (BaseBall* candidate : candidates) {
+            if (!candidate || candidate->isRemoved()) continue;
+            if (candidate == movingBall) continue; // 跳过自己
+            
+            if (movingBall->collidesWith(candidate)) {
+                checkCollisionsBetween(movingBall, candidate);
+            }
+        }
+    }
+    
+    // 特殊处理：孢子与玩家球的优化碰撞检测
+    // 这是GoBigger的一个关键优化：允许一个玩家球在一帧内吃多个孢子
+    optimizeSporeCollisions();
+}
+
+QVector<BaseBall*> GameManager::getMovingBalls() const
+{
+    QVector<BaseBall*> movingBalls;
+    
+    // 玩家球总是被认为是移动的（即使静止，也可能随时移动）
+    for (CloneBall* player : m_players) {
+        if (player && !player->isRemoved()) {
+            movingBalls.append(player);
+        }
+    }
+    
+    // 孢子球总是移动的
+    for (SporeBall* spore : m_sporeBalls) {
+        if (spore && !spore->isRemoved()) {
+            movingBalls.append(spore);
+        }
+    }
+    
+    // 荆棘球：只有正在移动的荆棘球才参与碰撞检测
+    for (ThornsBall* thorns : m_thornsBalls) {
+        if (thorns && !thorns->isRemoved() && thorns->isMoving()) {
+            movingBalls.append(thorns);
+        }
+    }
+    
+    // 食物球通常是静止的，不包含在移动球列表中
+    // 这是GoBigger优化的核心：大量静态食物不参与主动碰撞检测
+    
+    return movingBalls;
+}
+
+void GameManager::optimizeSporeCollisions()
+{
+    // 针对孢子的特殊优化：允许玩家球在一帧内吃掉多个孢子
+    for (CloneBall* player : m_players) {
+        if (!player || player->isRemoved()) continue;
+        
+        QVector<SporeBall*> sporesToEat;
+        
+        // 使用四叉树查找附近的孢子
+        QVector<BaseBall*> candidates = m_quadTree->queryCollisions(player);
+        
+        for (BaseBall* candidate : candidates) {
+            if (!candidate || candidate->isRemoved()) continue;
+            if (candidate->ballType() != BaseBall::SPORE_BALL) continue;
+            
+            SporeBall* spore = static_cast<SporeBall*>(candidate);
+            if (spore->canBeEaten() && player->collidesWith(spore) && player->canEat(spore)) {
+                sporesToEat.append(spore);
+            }
+        }
+        
+        // 一次性吃掉所有可以吃的孢子
+        for (SporeBall* spore : sporesToEat) {
+            if (!spore->isRemoved()) {
+                player->eat(spore);
+            }
+        }
     }
 }

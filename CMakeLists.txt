@@ -63,6 +63,8 @@ set(SOURCES
     src/SporeBall.cpp
     src/ThornsBall.cpp
     src/GameManager.cpp
+    # 空间分区优化
+    src/QuadTree.cpp
 )
 
 set(HEADERS
@@ -78,6 +80,8 @@ set(HEADERS
     src/SporeBall.h
     src/ThornsBall.h
     src/GameManager.h
+    # 空间分区优化
+    src/QuadTree.h
 )
 
 set(UI_FILES

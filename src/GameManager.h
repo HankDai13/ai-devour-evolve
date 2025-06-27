@@ -9,6 +9,7 @@
 #include <QRandomGenerator>
 #include "BaseBall.h"
 #include "GoBiggerConfig.h"
+#include "QuadTree.h"
 
 class CloneBall;
 class FoodBall;
@@ -32,12 +33,13 @@ public:
         qreal foodScoreMin = GoBiggerConfig::FOOD_MIN_SCORE;    // 食物最小分数
         qreal foodScoreMax = GoBiggerConfig::FOOD_MAX_SCORE;    // 食物最大分数
         
-        // 荆棘配置
-        int maxThornsCount = 10;        // 减少荆棘数量
-        int thornsSpawnRate = 1;        // 每30秒生成荆棘数量
-        qreal thornsScoreMin = 8.0;     // 荆棘最小分数
-        qreal thornsScoreMax = 15.0;    // 荆棘最大分数
-        qreal thornsDamageThreshold = 2.0; // 荆棘伤害阈值
+        // 荆棘配置 (GoBigger标准)
+        int initThornsCount = GoBiggerConfig::THORNS_COUNT;     // 初始荆棘数量 (9)
+        int maxThornsCount = GoBiggerConfig::THORNS_COUNT_MAX;  // 最大荆棘数量 (12)
+        int thornsRefreshFrames = GoBiggerConfig::THORNS_REFRESH_FRAMES; // 补充间隔帧数 (120帧)
+        float thornsRefreshPercent = GoBiggerConfig::THORNS_REFRESH_PERCENT; // 补充比例 (20%)
+        qreal thornsScoreMin = GoBiggerConfig::THORNS_MIN_SCORE; // 荆棘最小分数
+        qreal thornsScoreMax = GoBiggerConfig::THORNS_MAX_SCORE; // 荆棘最大分数
         
         // 玩家配置
         qreal playerScoreInit = 10.0;   // 玩家初始分数
@@ -105,6 +107,7 @@ private slots:
     void handlePlayerSplit(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
     void handleSporeEjected(CloneBall* ball, SporeBall* spore);
     void handleThornsCollision(ThornsBall* thorns, CloneBall* ball);
+    void handleThornsEaten(CloneBall* ball, ThornsBall* thorns); // 新增：处理吃荆棘球
 
 private:
     QGraphicsScene* m_scene;
@@ -128,6 +131,12 @@ private:
     // GoBigger风格的食物刷新机制
     int m_foodRefreshFrameCount;
     
+    // GoBigger风格的荆棘刷新机制
+    int m_thornsRefreshFrameCount;
+    
+    // 空间分区优化 - 四叉树
+    std::unique_ptr<QuadTree> m_quadTree;
+    
     // 初始化
     void initializeTimers();
     void connectBallSignals(BaseBall* ball);
@@ -138,9 +147,12 @@ private:
     QPointF generateRandomFoodPosition() const;
     QPointF generateRandomThornsPosition() const;
     
-    // 碰撞检测
+    // 碰撞检测 - GoBigger优化版本
     void checkCollisions();
+    void checkCollisionsOptimized();
     void checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2);
+    QVector<BaseBall*> getMovingBalls() const;
+    void optimizeSporeCollisions();
     
     // 清理函数
     void clearAllBalls();

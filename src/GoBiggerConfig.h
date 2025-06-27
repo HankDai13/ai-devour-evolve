@@ -22,7 +22,7 @@ constexpr float RADIUS_DISPLAY_SCALE = 20.0f;      // 半径显示缩放因子�
 constexpr float BASE_SPEED = 300.0f;               // 基础移动速度 (参考文档200-300)
 constexpr float SPEED_DECAY_FACTOR = 1.0f;         // 速度衰减因子
 constexpr float ACCELERATION_FACTOR = 1.0f;        // 加速度因子 (acc_weight=30)
-constexpr float SPEED_RADIUS_COEFF_A = 40.00f;      // 速度计算系数A
+constexpr float SPEED_RADIUS_COEFF_A = 50.00f;      // 速度计算系数A
 constexpr float SPEED_RADIUS_COEFF_B = 80.00f;      // 速度计算系数B
 // 实际速度 = (2.35 + 5.66 / radius) * ratio
 
@@ -46,14 +46,14 @@ constexpr int EJECT_VEL_ZERO_FRAME = 20;           // 孢子速度衰减帧数 (
 constexpr int EJECT_MIN_SCORE = 3200;              // 最小喷射分数 (GoBigger标准)
 
 // 地图参数 (扩大地图以匹配更合理的视角)
-constexpr int MAP_WIDTH = 6000;                    // 地图宽度 (扩大1.5倍)
-constexpr int MAP_HEIGHT = 6000;                   // 地图高度 (扩大1.5倍)
+constexpr int MAP_WIDTH = 4000;                    // 地图宽度 (扩大1.5倍)
+constexpr int MAP_HEIGHT = 4000;                   // 地图高度 (扩大1.5倍)
 constexpr int VIEWPORT_WIDTH = 1920;               // 视窗宽度
 constexpr int VIEWPORT_HEIGHT = 1080;              // 视窗高度
 
 // 食物参数 (大幅降低数量以确保流畅性能)
-constexpr int FOOD_COUNT_INIT = 2000;               // 降低到800，更接近GoBigger原版
-constexpr int FOOD_COUNT_MAX = 2500;               // 降低到1000，保证性能
+constexpr int FOOD_COUNT_INIT = 3000;               // 提升到3000，测试四叉树优化效果
+constexpr int FOOD_COUNT_MAX = 4000;               // 提升到4000，测试四叉树优化效果
 constexpr int FOOD_REFRESH_FRAMES = 12;            // 稍微放慢补充速度
 constexpr float FOOD_REFRESH_PERCENT = 0.01f;      // 食物补充比例 (GoBigger标准: 1%)
 constexpr int FOOD_SCORE = 100;                    // 普通食物分数 (GoBigger标准)
@@ -64,9 +64,16 @@ constexpr int FOOD_MAX_SCORE = 100;                // 食物最大分数 (GoBigg
 
 // 荆棘参数 (参考GoBigger原版)
 constexpr int THORNS_COUNT = 9;                    // 地图荆棘总数 (GoBigger标准)
+constexpr int THORNS_COUNT_MAX = 12;               // 荆棘最大数量 (GoBigger标准)
+constexpr int THORNS_REFRESH_FRAMES = 120;         // 荆棘补充间隔帧数 (GoBigger标准)
+constexpr float THORNS_REFRESH_PERCENT = 0.2f;     // 荆棘补充比例 (GoBigger标准: 20%)
 constexpr int THORNS_MIN_SCORE = 10000;            // 荆棘最小分数 (GoBigger标准)
 constexpr int THORNS_MAX_SCORE = 15000;            // 荆棘最大分数 (GoBigger标准)
-constexpr float THORNS_DAMAGE_RATIO = 0.8f;        // 荆棘伤害比例
+constexpr float THORNS_DAMAGE_RATIO = 0.2f;        // 荆棘伤害比例（降低到20%，更合理）
+constexpr float THORNS_SPORE_SPEED = 10.0f;        // 荆棘吃孢子后的移动速度
+constexpr int THORNS_SPORE_DECAY_FRAMES = 20;      // 荆棘速度衰减帧数
+constexpr int THORNS_SPLIT_MAX_COUNT = 10;         // 荆棘分裂最大新球数量
+constexpr int THORNS_SPLIT_MAX_SCORE = 5000;       // 荆棘分裂新球最大分数
 
 // 孢子参数
 constexpr int SPORE_LIFESPAN = 600;                // 孢子生命周期(帧)

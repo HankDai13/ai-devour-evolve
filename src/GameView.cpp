@@ -27,9 +27,9 @@ GameView::GameView(QWidget *parent)
     , m_zoomFactor(1.0)
     , m_followPlayer(true)
     , m_targetZoom(1.0)
-    , m_minVisionRadius(250.0)     // 适当增加最小视野半径
-    , m_maxVisionRadius(600.0)     // 减小最大视野半径，更合理
-    , m_scaleUpRatio(2.2)          // 减小缩放比例，避免视角放大过快
+    , m_minVisionRadius(400.0)     // 进一步增大最小视野半径，开局更大视野
+    , m_maxVisionRadius(800.0)     // 增大最大视野范围
+    , m_scaleUpRatio(2.5)          // 稍微增加缩放比例，但不要太快
 {
     initializeView();
     initializePlayer();
