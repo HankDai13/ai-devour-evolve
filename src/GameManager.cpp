@@ -3,6 +3,7 @@
 #include "FoodBall.h"
 #include "SporeBall.h"
 #include "ThornsBall.h"
+#include "GoBiggerConfig.h"
 #include <QGraphicsScene>
 #include <QDebug>
 #include <cmath>

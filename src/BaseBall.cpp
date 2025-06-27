@@ -1,4 +1,5 @@
 #include "BaseBall.h"
+#include "GoBiggerConfig.h"
 #include <QDebug>
 #include <QGraphicsScene>
 #include <cmath>

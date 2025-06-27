@@ -3,6 +3,7 @@
 #include "CloneBall.h"
 #include "SporeBall.h"
 #include "BaseBall.h"
+#include "GoBiggerConfig.h"
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -91,7 +92,7 @@ void GameView::initializePlayer()
     
     if (m_mainPlayer) {
         // 设置一个合理的初始质量，让玩家球更大一些
-        m_mainPlayer->setMass(GoBiggerConfig::CELL_MIN_MASS); // 使用新的标准初始质量
+        m_mainPlayer->setMass(GoBiggerConfig::CELL_INIT_MASS); // 使用新的标准初始质量
         
         // 立即将视图中心设置到玩家位置
         centerOn(m_mainPlayer->pos());
@@ -252,8 +253,18 @@ void GameView::processInput()
         QVector2D centerForce(0, 0);
         if (allPlayerBalls.size() > 1) {
             QVector2D toCenter(centroid.x() - ballPos.x(), centroid.y() - ballPos.y());
-            if (toCenter.length() > ball->radius() * 1.5) { // 只有距离中心足够远才应用向心力
-                centerForce = toCenter.normalized() * (toCenter.length() / 200.0f); // 基于距离的向心力
+            float distanceToCenter = toCenter.length();
+            
+            // 更温和的向心力机制：只有距离足够远且在合理范围内才应用
+            float minDistance = ball->radius() * 2.0f; // 最小距离：2倍半径
+            float maxDistance = ball->radius() * 8.0f; // 最大距离：8倍半径
+            
+            if (distanceToCenter > minDistance && distanceToCenter < maxDistance) {
+                // 基于距离的线性衰减向心力，距离越远力越小
+                float forceRatio = 1.0f - (distanceToCenter - minDistance) / (maxDistance - minDistance);
+                float forceStrength = 0.3f * forceRatio; // 减小基础力度
+                
+                centerForce = toCenter.normalized() * forceStrength;
             }
         }
         
@@ -308,39 +319,70 @@ void GameView::updateCamera()
         return;
     }
     
-    // 计算玩家质心位置
-    QPointF centroid = calculatePlayerCentroid();
+    // 计算所有玩家球的质心位置
+    QVector<CloneBall*> allPlayerBalls = getAllPlayerBalls();
+    QPointF centroid = calculatePlayerCentroidAll(allPlayerBalls);
     centerOn(centroid);
     
-    // 计算智能缩放
-    calculateIntelligentZoom();
+    // 计算智能缩放（基于GoBigger原版算法）
+    calculateIntelligentZoomGoBigger(allPlayerBalls);
     
     // 应用平滑缩放
     adjustZoom();
 }
 
-void GameView::calculateIntelligentZoom()
+void GameView::calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPlayerBalls)
 {
-    if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
+    if (allPlayerBalls.isEmpty()) {
         return;
     }
     
-    // 计算视野所需的最大半径，参考GoBigger算法
-    qreal maxRadius = calculatePlayerRadius();
+    // GoBigger风格视野计算：
+    // 1. 计算所有球的最小外接矩形
+    float minX = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
     
-    // 应用最小视野限制
-    maxRadius = qMax(maxRadius, m_minVisionRadius);
+    float maxRadius = 0;
     
-    // 计算缩放后的视野范围
-    qreal scaledRadius = maxRadius * m_scaleUpRatio;
+    for (CloneBall* ball : allPlayerBalls) {
+        if (!ball || ball->isRemoved()) continue;
+        
+        QPointF pos = ball->pos();
+        float radius = ball->radius();
+        
+        minX = std::min(minX, static_cast<float>(pos.x() - radius));
+        maxX = std::max(maxX, static_cast<float>(pos.x() + radius));
+        minY = std::min(minY, static_cast<float>(pos.y() - radius));
+        maxY = std::max(maxY, static_cast<float>(pos.y() + radius));
+        
+        maxRadius = std::max(maxRadius, radius);
+    }
     
-    // 基于视野范围计算目标缩放比例
-    // 视窗大小的一半作为参考
-    qreal viewportSize = qMin(width(), height()) * 0.4; // 40%的视窗大小
-    m_targetZoom = viewportSize / scaledRadius;
+    // 2. 计算外接矩形的大小
+    float rectWidth = maxX - minX;
+    float rectHeight = maxY - minY;
+    float maxDimension = std::max(rectWidth, rectHeight);
     
-    // 限制缩放范围
-    m_targetZoom = qBound(0.2, m_targetZoom, 3.0);
+    // 3. 应用最小视野保证（基于最大球的半径）
+    float minVisionSize = maxRadius * 6.0f; // 至少6倍最大球半径的视野
+    float requiredVisionSize = std::max(maxDimension, minVisionSize);
+    
+    // 4. 应用GoBigger的放大系数（让视野更宽松）
+    requiredVisionSize *= m_scaleUpRatio; // 1.8倍放大
+    
+    // 5. 计算目标缩放比例
+    float viewportSize = std::min(width(), height()) * 0.8f; // 80%的视窗大小用于显示
+    m_targetZoom = viewportSize / requiredVisionSize;
+    
+    // 6. 限制缩放范围
+    m_targetZoom = qBound(0.2, m_targetZoom, 2.0);
+    
+    qDebug() << "Vision calculation - rectSize:" << maxDimension 
+             << "maxRadius:" << maxRadius 
+             << "requiredVision:" << requiredVisionSize 
+             << "targetZoom:" << m_targetZoom;
 }
 
 qreal GameView::calculatePlayerRadius() const

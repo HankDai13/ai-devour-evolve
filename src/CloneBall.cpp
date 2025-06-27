@@ -1,6 +1,7 @@
 #include "CloneBall.h"
 #include "SporeBall.h"
 #include "FoodBall.h"
+#include "GoBiggerConfig.h"
 #include <QRandomGenerator>
 #include <QGraphicsScene>
 #include <QDebug>
@@ -9,7 +10,7 @@
 
 CloneBall::CloneBall(int ballId, const QPointF& position, const Border& border, int teamId, int playerId, 
                      const Config& config, QGraphicsItem* parent)
-    : BaseBall(ballId, position, GoBiggerConfig::CELL_MIN_MASS, border, CLONE_BALL, parent) // 使用标准初始质量
+    : BaseBall(ballId, position, GoBiggerConfig::CELL_INIT_MASS, border, CLONE_BALL, parent) // 使用标准初始质量
     , m_config(config)
     , m_teamId(teamId)
     , m_playerId(playerId)
@@ -61,10 +62,10 @@ bool CloneBall::canSplit() const
 
 bool CloneBall::canEject() const
 {
-    // 降低孢子喷射要求，只需要大于孢子质量即可
-    bool canEject = m_mass > GoBiggerConfig::EJECT_MASS;
+    // 使用GoBigger标准：score >= 3200才能喷射孢子
+    bool canEject = m_mass >= GoBiggerConfig::EJECT_MIN_MASS;
     qDebug() << "Ball" << m_ballId << "canEject check: mass=" << m_mass 
-             << "EJECT_MASS=" << GoBiggerConfig::EJECT_MASS 
+             << "EJECT_MIN_MASS=" << GoBiggerConfig::EJECT_MIN_MASS 
              << "result=" << canEject;
     return canEject;
 }
@@ -778,35 +779,35 @@ void CloneBall::applyCenteringForce()
 
 void CloneBall::applyGoBiggerMovement(const QVector2D& playerInput, const QVector2D& centerForce)
 {
-    // GoBigger风格的双重加速度控制，提升速度和丝滑度
+    // GoBigger风格的双重加速度控制，优化向心力平衡
     // 参考原版：given_acc (玩家输入) + given_acc_center (向心力)
     
     float currentRadius = radius();
     
-    // 1. 处理玩家输入加速度 (given_acc) - 增大系数提升响应速度
+    // 1. 处理玩家输入加速度 (given_acc) - 使用GoBigger标准参数
     QVector2D givenAcc(0, 0);
     if (playerInput.length() > 0.01) {
         QVector2D normalizedInput = playerInput.length() > 1.0f ? playerInput.normalized() : playerInput;
-        givenAcc = normalizedInput * GoBiggerConfig::ACCELERATION_FACTOR * 50.0f; // 增大加速度响应
+        givenAcc = normalizedInput * 30.0f; // GoBigger标准acc_weight=30
     }
     
-    // 2. 处理向心力加速度 (given_acc_center)  
+    // 2. 处理向心力加速度 (given_acc_center) - 减弱向心力，避免卡顿
     QVector2D centerAcc(0, 0);
     if (centerForce.length() > 0.01) {
         QVector2D normalizedCenter = centerForce.length() > 1.0f ? centerForce.normalized() : centerForce;
         // 参考原版：given_acc_center = given_acc_center / self.radius
-        centerAcc = normalizedCenter / currentRadius * 15.0f; // 增强向心力
+        centerAcc = normalizedCenter / currentRadius * 5.0f; // 减小center_acc_weight从15到5
     }
     
     // 3. 计算总加速度
     QVector2D totalAcc = givenAcc + centerAcc;
     
-    // 4. 计算最大速度限制（参考原版公式） - 提升速度倍数
+    // 4. 计算最大速度限制（使用GoBigger原版公式）
     float inputRatio = std::max(playerInput.length(), centerForce.length());
-    float maxSpeed = GoBiggerConfig::calculateDynamicSpeed(currentRadius, inputRatio) * 1.5f; // 提升速度倍数
+    float maxSpeed = GoBiggerConfig::calculateDynamicSpeed(currentRadius, inputRatio);
     
-    // 5. 更新速度（简化版，类似原版的vel_given更新） - 更快的时间步长
-    QVector2D newVelocity = velocity() + totalAcc * 0.02f; // 增大时间步长提升响应
+    // 5. 更新速度（使用标准时间步长）
+    QVector2D newVelocity = velocity() + totalAcc * 0.05f; // 标准帧时间
     
     // 6. 限制最大速度
     if (newVelocity.length() > maxSpeed) {

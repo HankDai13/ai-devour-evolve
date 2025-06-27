@@ -80,6 +80,7 @@ private:
     void updateCamera();
     void adjustZoom();
     void calculateIntelligentZoom();
+    void calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPlayerBalls);
     qreal calculatePlayerRadius() const;
     QPointF calculatePlayerCentroid() const;
     

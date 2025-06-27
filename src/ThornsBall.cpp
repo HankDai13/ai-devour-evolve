@@ -1,5 +1,6 @@
 #include "ThornsBall.h"
 #include "CloneBall.h"
+#include "GoBiggerConfig.h"
 #include <QRandomGenerator>
 #include <QPainter>
 #include <QPolygonF>
