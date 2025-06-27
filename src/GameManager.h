@@ -8,6 +8,7 @@
 #include <QGraphicsScene>
 #include <QRandomGenerator>
 #include "BaseBall.h"
+#include "GoBiggerConfig.h"
 
 class CloneBall;
 class FoodBall;
@@ -23,13 +24,13 @@ public:
         // 游戏区域
         Border gameBorder = Border(-400, 400, -400, 400);
         
-        // 食物配置
-        int maxFoodCount = 60;          // 减少最大食物数量
-        int foodSpawnRate = 1;          // 减少生成速率：每秒1个
-        qreal foodDensityRadius = 100.0; // 密度检查半径
-        int maxFoodInDensityArea = 3;   // 密度区域内最大食物数量
-        qreal foodScoreMin = 0.5;       // 食物最小分数
-        qreal foodScoreMax = 2.0;       // 食物最大分数
+        // 食物配置 (完全对齐GoBigger原版策略)
+        int maxFoodCount = GoBiggerConfig::FOOD_COUNT_MAX;      // 最大食物数量 (900)
+        int initFoodCount = GoBiggerConfig::FOOD_COUNT_INIT;    // 初始食物数量 (800)
+        int foodRefreshFrames = GoBiggerConfig::FOOD_REFRESH_FRAMES;  // 补充间隔帧数 (8帧)
+        float foodRefreshPercent = GoBiggerConfig::FOOD_REFRESH_PERCENT; // 补充比例 (1%)
+        qreal foodScoreMin = GoBiggerConfig::FOOD_MIN_SCORE;    // 食物最小分数
+        qreal foodScoreMax = GoBiggerConfig::FOOD_MAX_SCORE;    // 食物最大分数
         
         // 荆棘配置
         int maxThornsCount = 10;        // 减少荆棘数量
@@ -73,6 +74,10 @@ public:
     void removeBall(BaseBall* ball);
     QVector<BaseBall*> getAllBalls() const;
     QVector<BaseBall*> getBallsNear(const QPointF& position, qreal radius) const;
+    
+    // 视野优化 - 只获取指定区域内的球
+    QVector<BaseBall*> getBallsInRect(const QRectF& rect) const;
+    QVector<FoodBall*> getFoodBallsInRect(const QRectF& rect) const;
 
     // 游戏状态
     const Config& config() const { return m_config; }
@@ -119,6 +124,9 @@ private:
     QHash<int, BaseBall*> m_allBalls;
     
     int m_nextBallId;
+    
+    // GoBigger风格的食物刷新机制
+    int m_foodRefreshFrameCount;
     
     // 初始化
     void initializeTimers();

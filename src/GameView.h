@@ -35,6 +35,9 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    
+    // 渲染优化
+    void drawBackground(QPainter *painter, const QRectF &rect) override;
 
 private slots:
     void updateGameView();
@@ -83,6 +86,10 @@ private:
     void calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPlayerBalls);
     qreal calculatePlayerRadius() const;
     QPointF calculatePlayerCentroid() const;
+    
+    // 视野裁剪优化
+    QRectF getVisibleWorldRect() const;
+    void updateVisibleItems();
     
     // 玩家操作
     void handleSplitAction();

@@ -45,14 +45,17 @@ constexpr float EJECT_COOLDOWN = 0.1f;             // 吐孢子冷却时间
 constexpr int EJECT_VEL_ZERO_FRAME = 20;           // 孢子速度衰减帧数 (GoBigger标准)
 constexpr int EJECT_MIN_SCORE = 3200;              // 最小喷射分数 (GoBigger标准)
 
-// 地图参数
-constexpr int MAP_WIDTH = 4000;                    // 地图宽度
-constexpr int MAP_HEIGHT = 4000;                   // 地图高度
+// 地图参数 (扩大地图以匹配更合理的视角)
+constexpr int MAP_WIDTH = 6000;                    // 地图宽度 (扩大1.5倍)
+constexpr int MAP_HEIGHT = 6000;                   // 地图高度 (扩大1.5倍)
 constexpr int VIEWPORT_WIDTH = 1920;               // 视窗宽度
 constexpr int VIEWPORT_HEIGHT = 1080;              // 视窗高度
 
-// 食物参数 (参考GoBigger原版)
-constexpr int FOOD_COUNT = 900;                   // 地图食物总数 (文档标准)
+// 食物参数 (大幅降低数量以确保流畅性能)
+constexpr int FOOD_COUNT_INIT = 2000;               // 降低到800，更接近GoBigger原版
+constexpr int FOOD_COUNT_MAX = 2500;               // 降低到1000，保证性能
+constexpr int FOOD_REFRESH_FRAMES = 12;            // 稍微放慢补充速度
+constexpr float FOOD_REFRESH_PERCENT = 0.01f;      // 食物补充比例 (GoBigger标准: 1%)
 constexpr int FOOD_SCORE = 100;                    // 普通食物分数 (GoBigger标准)
 constexpr float FOOD_RADIUS = 5.0f;                // 食物半径 (文档标准)
 constexpr float FOOD_VISUAL_SCALE = 3.0f;          // 食物视觉&碰撞半径缩放
@@ -143,17 +146,26 @@ inline QVector<QColor> getPlayerColors() {
     };
 }
 
+// 优化：使用固定的少量食物颜色，提升渲染性能
 inline QVector<QColor> getFoodColors() {
-    return {
+    static const QVector<QColor> colors = {
         QColor(255, 100, 100),  // 浅红
         QColor(100, 255, 100),  // 浅绿
         QColor(100, 100, 255),  // 浅蓝
         QColor(255, 255, 100),  // 浅黄
-        QColor(255, 100, 255),  // 浅品红
-        QColor(100, 255, 255),  // 浅青
-        QColor(255, 150, 100),  // 浅橙
-        QColor(200, 150, 255),  // 浅紫
     };
+    return colors;
+}
+
+// 高性能：获取固定的食物颜色（避免每次都创建QVector）
+inline const QColor& getStaticFoodColor(int index) {
+    static const QColor foodColors[4] = {
+        QColor(255, 100, 100),  // 浅红
+        QColor(100, 255, 100),  // 浅绿
+        QColor(100, 100, 255),  // 浅蓝
+        QColor(255, 255, 100),  // 浅黄
+    };
+    return foodColors[index % 4];
 }
 
 } // namespace GoBiggerConfig

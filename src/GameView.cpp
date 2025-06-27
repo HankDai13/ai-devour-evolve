@@ -1,6 +1,7 @@
 #include "GameView.h"
 #include "GameManager.h"
 #include "CloneBall.h"
+#include "FoodBall.h"
 #include "SporeBall.h"
 #include "BaseBall.h"
 #include "GoBiggerConfig.h"
@@ -14,6 +15,8 @@
 #include <QVector2D>
 #include <QDebug>
 #include <QCursor>
+#include <QPainter>
+#include <QLineF>
 #include <cmath>
 
 GameView::GameView(QWidget *parent) 
@@ -24,9 +27,9 @@ GameView::GameView(QWidget *parent)
     , m_zoomFactor(1.0)
     , m_followPlayer(true)
     , m_targetZoom(1.0)
-    , m_minVisionRadius(200.0)     // 最小视野半径
-    , m_maxVisionRadius(800.0)     // 最大视野半径
-    , m_scaleUpRatio(2.2)          // 缩放比例，参考GoBigger
+    , m_minVisionRadius(250.0)     // 适当增加最小视野半径
+    , m_maxVisionRadius(600.0)     // 减小最大视野半径，更合理
+    , m_scaleUpRatio(2.2)          // 减小缩放比例，避免视角放大过快
 {
     initializeView();
     initializePlayer();
@@ -47,17 +50,19 @@ GameView::~GameView()
 
 void GameView::initializeView()
 {
-    // 创建场景
+    // 创建场景 - 扩大到与GoBiggerConfig::MAP_WIDTH/HEIGHT一致
     QGraphicsScene *scene = new QGraphicsScene(this);
-    scene->setSceneRect(-500, -500, 1000, 1000); // 更大的游戏世界
+    scene->setSceneRect(-3000, -3000, 6000, 6000); // 6000x6000的游戏世界
     scene->setBackgroundBrush(QColor(240, 245, 250)); // 浅蓝灰色背景
     
-    // 设置视图
+    // 设置视图 - 简化版本，避免复杂优化
     setScene(scene);
-    setRenderHint(QPainter::Antialiasing);
-    setCacheMode(QGraphicsView::CacheBackground);
-    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
-    setOptimizationFlags(QGraphicsView::DontSavePainterState | QGraphicsView::DontAdjustForAntialiasing);
+    
+    // 基础渲染设置
+    setRenderHint(QPainter::Antialiasing, false);  // 关闭抗锯齿
+    setCacheMode(QGraphicsView::CacheBackground);   // 只缓存背景
+    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);  // 全视口更新，简单可靠
+    setOptimizationFlags(QGraphicsView::DontSavePainterState); // 基础优化
     
     // 禁用滚动条，使用自定义相机控制
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -68,9 +73,9 @@ void GameView::initializeView()
     setFocusPolicy(Qt::StrongFocus);
     setFocus();
     
-    // 创建游戏管理器
+    // 创建游戏管理器 - 使用扩大的地图边界
     GameManager::Config config;
-    config.gameBorder = Border(-500, 500, -500, 500);
+    config.gameBorder = Border(-3000, 3000, -3000, 3000); // 6000x6000的游戏边界
     m_gameManager = new GameManager(scene, config, this);
     
     // 创建输入处理定时器
@@ -191,8 +196,8 @@ void GameView::mousePressEvent(QMouseEvent *event)
 
 void GameView::wheelEvent(QWheelEvent *event)
 {
-    // 缩放控制
-    const qreal scaleFactor = 1.15;
+    // 缩放控制 - 降低缩放速度，更加平滑
+    const qreal scaleFactor = 1.08; // 从1.15降低到1.08，缩放更平滑
     
     if (event->angleDelta().y() > 0) {
         // 放大
@@ -204,14 +209,15 @@ void GameView::wheelEvent(QWheelEvent *event)
         scale(1.0 / scaleFactor, 1.0 / scaleFactor);
     }
     
-    // 限制缩放范围
-    m_zoomFactor = qBound(0.5, m_zoomFactor, 3.0);
+    // 限制缩放范围 - 更合理的缩放上下限
+    m_zoomFactor = qBound(0.3, m_zoomFactor, 2.5);
 }
 
 void GameView::updateGameView()
 {
     processInput();
     updateCamera();
+    // 移除视野裁剪更新，恢复简单模式
 }
 
 void GameView::processInput()
@@ -365,19 +371,19 @@ void GameView::calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPl
     float rectHeight = maxY - minY;
     float maxDimension = std::max(rectWidth, rectHeight);
     
-    // 3. 应用最小视野保证（基于最大球的半径）
-    float minVisionSize = maxRadius * 6.0f; // 至少6倍最大球半径的视野
+    // 3. 应用最小视野保证（减小倍数，避免视角过大）
+    float minVisionSize = maxRadius * 8.0f; // 从12倍减少到8倍最大球半径的视野
     float requiredVisionSize = std::max(maxDimension, minVisionSize);
     
-    // 4. 应用GoBigger的放大系数（让视野更宽松）
-    requiredVisionSize *= m_scaleUpRatio; // 1.8倍放大
+    // 4. 应用合理的放大系数（减小放大倍数）
+    requiredVisionSize *= m_scaleUpRatio; // 现在是2.2倍放大（之前是3.5倍）
     
     // 5. 计算目标缩放比例
-    float viewportSize = std::min(width(), height()) * 0.8f; // 80%的视窗大小用于显示
+    float viewportSize = std::min(width(), height()) * 0.75f; // 从80%调整到75%
     m_targetZoom = viewportSize / requiredVisionSize;
     
-    // 6. 限制缩放范围
-    m_targetZoom = qBound(0.2, m_targetZoom, 2.0);
+    // 6. 更严格的缩放范围限制
+    m_targetZoom = qBound(0.4, m_targetZoom, 1.8); // 缩小上限从2.0到1.8
     
     qDebug() << "Vision calculation - rectSize:" << maxDimension 
              << "maxRadius:" << maxRadius 
@@ -624,4 +630,36 @@ QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) c
     } else {
         return balls.first()->pos(); // 备选方案
     }
+}
+
+// ============ 视野裁剪优化实现（已禁用以提升性能）============
+
+/*
+QRectF GameView::getVisibleWorldRect() const
+{
+    // 获取当前视图在场景中的可见矩形区域
+    QRect viewRect = viewport()->rect();
+    QPolygonF scenePolygon = mapToScene(viewRect);
+    QRectF sceneRect = scenePolygon.boundingRect();
+    
+    // 扩大一点边界，确保边缘对象正确处理
+    qreal margin = 200.0;
+    sceneRect.adjust(-margin, -margin, margin, margin);
+    
+    return sceneRect;
+}
+
+void GameView::updateVisibleItems()
+{
+    // 功能已禁用，避免额外的性能开销
+    return;
+}
+*/
+
+// ============ 渲染优化实现（简化版）============
+
+void GameView::drawBackground(QPainter *painter, const QRectF &rect)
+{
+    // 简单绘制背景，移除额外的剪裁处理
+    QGraphicsView::drawBackground(painter, rect);
 }

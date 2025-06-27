@@ -17,6 +17,7 @@ GameManager::GameManager(QGraphicsScene* scene, const Config& config, QObject* p
     , m_foodTimer(nullptr)
     , m_thornsTimer(nullptr)
     , m_nextBallId(1)
+    , m_foodRefreshFrameCount(0)
 {
     initializeTimers();
 }
@@ -47,16 +48,20 @@ void GameManager::startGame()
         m_foodTimer->start();
         m_thornsTimer->start();
         
-        // 初始生成一些食物和荆棘
-        for (int i = 0; i < m_config.maxFoodCount / 2; ++i) {
-            spawnFood();
+        // GoBigger风格初始化：生成初始数量的食物
+        for (int i = 0; i < m_config.initFoodCount; ++i) {
+            QPointF pos = generateRandomFoodPosition();
+            FoodBall* food = new FoodBall(getNextBallId(), pos, m_config.gameBorder);
+            addBall(food);
         }
+        
+        // 荆棘初始化保持不变
         for (int i = 0; i < m_config.maxThornsCount / 2; ++i) {
             spawnThorns();
         }
         
         emit gameStarted();
-        qDebug() << "Game started";
+        qDebug() << "Game started with" << m_config.initFoodCount << "initial food balls";
     }
 }
 
@@ -78,6 +83,7 @@ void GameManager::resetGame()
     pauseGame();
     clearAllBalls();
     m_nextBallId = 1;
+    m_foodRefreshFrameCount = 0;  // 重置食物刷新计数器
     
     emit gameReset();
     qDebug() << "Game reset";
@@ -224,6 +230,48 @@ QVector<BaseBall*> GameManager::getBallsNear(const QPointF& position, qreal radi
     return nearbyBalls;
 }
 
+// ============ 视野优化方法实现 ============
+
+QVector<BaseBall*> GameManager::getBallsInRect(const QRectF& rect) const
+{
+    QVector<BaseBall*> ballsInRect;
+    
+    // 遍历所有球，只返回在指定矩形区域内的球
+    for (auto it = m_allBalls.constBegin(); it != m_allBalls.constEnd(); ++it) {
+        BaseBall* ball = it.value();
+        if (ball && !ball->isRemoved()) {
+            QPointF ballPos = ball->pos();
+            // 考虑球的半径，使用包含球心+半径的检查
+            QRectF ballRect(ballPos.x() - ball->radius(), ballPos.y() - ball->radius(),
+                           2 * ball->radius(), 2 * ball->radius());
+            
+            if (rect.intersects(ballRect)) {
+                ballsInRect.append(ball);
+            }
+        }
+    }
+    
+    return ballsInRect;
+}
+
+QVector<FoodBall*> GameManager::getFoodBallsInRect(const QRectF& rect) const
+{
+    QVector<FoodBall*> foodInRect;
+    
+    // 只遍历食物球，提升性能
+    for (FoodBall* food : m_foodBalls) {
+        if (food && !food->isRemoved()) {
+            QPointF foodPos = food->pos();
+            // 食物球通常较小，可以简化检查
+            if (rect.contains(foodPos)) {
+                foodInRect.append(food);
+            }
+        }
+    }
+    
+    return foodInRect;
+}
+
 void GameManager::initializeTimers()
 {
     // 游戏更新定时器
@@ -231,10 +279,10 @@ void GameManager::initializeTimers()
     connect(m_gameTimer, &QTimer::timeout, this, &GameManager::updateGame);
     m_gameTimer->setInterval(m_config.gameUpdateInterval);
     
-    // 食物生成定时器
+    // 食物生成定时器 (GoBigger风格：基于帧数而非固定时间)
     m_foodTimer = new QTimer(this);
     connect(m_foodTimer, &QTimer::timeout, this, &GameManager::spawnFood);
-    m_foodTimer->setInterval(2000); // 每2秒生成1个食物，降低生成速度
+    m_foodTimer->setInterval(m_config.gameUpdateInterval); // 与游戏更新同频，在spawnFood内部按帧数控制
     
     // 荆棘生成定时器
     m_thornsTimer = new QTimer(this);
@@ -345,42 +393,35 @@ void GameManager::updateGame()
 
 void GameManager::spawnFood()
 {
-    if (m_foodBalls.size() < m_config.maxFoodCount) {
-        // 尝试多次找到合适的位置
-        bool positionFound = false;
-        QPointF pos;
-        int attempts = 0;
-        const int maxAttempts = 20;
+    // GoBigger风格的食物补充机制
+    m_foodRefreshFrameCount++;
+    
+    // 每隔指定帧数进行一次补充
+    if (m_foodRefreshFrameCount >= m_config.foodRefreshFrames) {
+        int currentFoodCount = m_foodBalls.size();
+        int leftNum = m_config.maxFoodCount - currentFoodCount;
         
-        while (!positionFound && attempts < maxAttempts) {
-            pos = generateRandomFoodPosition();
+        if (leftNum > 0) {
+            // 计算需要补充的食物数量（GoBigger原版公式）
+            int todoNum = std::min(
+                static_cast<int>(std::ceil(m_config.foodRefreshPercent * leftNum)), 
+                leftNum
+            );
             
-            // 检查该位置附近的食物密度
-            int nearbyFoodCount = 0;
-            for (FoodBall* food : m_foodBalls) {
-                if (food && !food->isRemoved()) {
-                    qreal distance = std::sqrt(
-                        std::pow(pos.x() - food->pos().x(), 2) + 
-                        std::pow(pos.y() - food->pos().y(), 2)
-                    );
-                    if (distance < m_config.foodDensityRadius) {
-                        nearbyFoodCount++;
-                    }
-                }
+            // 批量生成食物，无需复杂的密度检查
+            for (int i = 0; i < todoNum; ++i) {
+                QPointF pos = generateRandomFoodPosition();
+                FoodBall* food = new FoodBall(getNextBallId(), pos, m_config.gameBorder);
+                addBall(food);
             }
             
-            // 如果密度未超过限制，则使用该位置
-            if (nearbyFoodCount < m_config.maxFoodInDensityArea) {
-                positionFound = true;
+            if (todoNum > 0) {
+                qDebug() << "Spawned" << todoNum << "food balls, total:" << (currentFoodCount + todoNum);
             }
-            
-            attempts++;
         }
         
-        if (positionFound) {
-            FoodBall* food = new FoodBall(getNextBallId(), pos, m_config.gameBorder);
-            addBall(food);
-        }
+        // 重置计数器
+        m_foodRefreshFrameCount = 0;
     }
 }
 

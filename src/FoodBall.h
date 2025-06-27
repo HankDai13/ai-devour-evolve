@@ -27,9 +27,9 @@ protected:
 
 private:
     Config m_config;
-    QColor m_color;
+    int m_colorIndex;  // 使用颜色索引而非QColor对象，节省内存
     
-    void generateRandomColor();
+    void generateColorIndex();
 };
 
 #endif // FOODBALL_H
