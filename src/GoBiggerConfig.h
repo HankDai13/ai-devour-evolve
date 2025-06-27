@@ -13,21 +13,21 @@ namespace GoBiggerConfig {
 // 细胞基础参数 (参考GoBigger原版)
 constexpr float CELL_MIN_RADIUS = 10.0f;           // 最小半径 (对应mass=10)
 constexpr float CELL_MAX_RADIUS = 300.0f;          // 最大半径
-constexpr int CELL_MIN_MASS = 10;                  // 初始质量 (GoBigger标准：最小质量)
-constexpr int CELL_INIT_MASS = 100;               // 玩家初始质量 (GoBigger标准)
+constexpr int CELL_MIN_MASS = 50;                  // 初始质量 (GoBigger标准：最小质量)
+constexpr int CELL_INIT_MASS = 150;               // 玩家初始质量 (GoBigger标准)
 constexpr int CELL_MAX_MASS = 50000;               // 最大质量
-constexpr float MASS_TO_RADIUS_RATIO = 1.0f;       // 质量到半径转换: radius = sqrt(mass)
+constexpr float MASS_TO_RADIUS_RATIO = 2.0f;       // 质量到半径转换: radius = sqrt(mass)
 
 // 移动参数 (基于GoBigger动态计算)
 constexpr float BASE_SPEED = 300.0f;               // 基础移动速度 (参考文档200-300)
 constexpr float SPEED_DECAY_FACTOR = 1.0f;         // 速度衰减因子
 constexpr float ACCELERATION_FACTOR = 1.0f;        // 加速度因子 (acc_weight=30)
-constexpr float SPEED_RADIUS_COEFF_A = 2.35f;      // 速度计算系数A
-constexpr float SPEED_RADIUS_COEFF_B = 5.66f;      // 速度计算系数B
+constexpr float SPEED_RADIUS_COEFF_A = 10.00f;      // 速度计算系数A
+constexpr float SPEED_RADIUS_COEFF_B = 3.00f;      // 速度计算系数B
 // 实际速度 = (2.35 + 5.66 / radius) * ratio
 
 // 分裂参数 (参考GoBigger原版)
-constexpr int SPLIT_MIN_MASS = 36;                 // 最小分裂质量 (文档标准：半径12)
+constexpr int SPLIT_MIN_MASS = 50;                 // 最小分裂质量 (文档标准：半径12)
 constexpr int MAX_SPLIT_COUNT = 16;                // 最大分裂数量
 constexpr float SPLIT_BOOST_SPEED = 500.0f;        // 分裂冲刺速度 (文档标准)
 constexpr float SPLIT_COOLDOWN = 1.0f;             // 分裂冷却时间(秒)
@@ -52,11 +52,12 @@ constexpr int VIEWPORT_WIDTH = 1920;               // 视窗宽度
 constexpr int VIEWPORT_HEIGHT = 1080;              // 视窗高度
 
 // 食物参数 (参考GoBigger原版)
-constexpr int FOOD_COUNT = 1000;                   // 地图食物总数 (文档标准)
-constexpr int FOOD_MASS = 1;                       // 普通食物质量 (文档标准)
-constexpr float FOOD_RADIUS = 3.0f;                // 食物半径 (文档标准)
-constexpr float FOOD_MIN_MASS = 1.0f;              // 食物最小质量
-constexpr float FOOD_MAX_MASS = 1.0f;              // 食物最大质量
+constexpr int FOOD_COUNT = 2000;                   // 地图食物总数 (文档标准)
+constexpr int FOOD_MASS = 5;                       // 普通食物质量 (文档标准)
+constexpr float FOOD_RADIUS = 5.0f;                // 食物半径 (文档标准)
+constexpr float FOOD_VISUAL_SCALE = 2.0f;          // 食物视觉&碰撞 半径 = sqrt(mass) * FOOD_VISUAL_SCALE
+constexpr float FOOD_MIN_MASS = 3.0f;              // 食物最小质量
+constexpr float FOOD_MAX_MASS = 10.0f;             // 食物最大质量
 
 // 荆棘参数 (参考GoBigger原版)
 constexpr int THORNS_COUNT = 9;                    // 地图荆棘总数 (GoBigger标准)
@@ -73,8 +74,8 @@ constexpr float DECAY_RATE = 0.00005f;             // 衰减速率 (GoBigger标�
 
 // 合并参数
 constexpr float RECOMBINE_RADIUS = 3.0f;           // 合并半径倍数
-constexpr int BIG_FOOD_MASS = 5;                   // 大食物质量
-constexpr float BIG_FOOD_RADIUS = 8.0f;            // 大食物半径
+constexpr int BIG_FOOD_MASS = 15;                   // 大食物质量
+constexpr float BIG_FOOD_RADIUS = 50.0f;            // 大食物半径
 constexpr float BIG_FOOD_SPAWN_RATE = 0.1f;        // 大食物生成概率
 
 // 渲染参数

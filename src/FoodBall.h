@@ -22,7 +22,6 @@ public:
     bool canEat(BaseBall* other) const override;
     void eat(BaseBall* other) override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
-
 protected:
     QColor getBallColor() const override;
 
