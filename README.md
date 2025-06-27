@@ -1,97 +1,89 @@
 # AI Devour Evolve
 
-一个基于强化学习的细胞吞噬游戏，使用Qt6 + LibTorch开发。
+> 🚀 C++/Qt高性能复刻GoBigger单人玩法，所有机制、数值、体验全面对齐原版，支持AI集成与二次开发。
 
-## 🎉 Phase 1 完成！ (完整原型实现)
+## 项目简介
 
-**完整游戏原型已实现！** 包含：
-- 响应键盘操作的玩家细胞 (WASD + 方向键)
-- 完整的Qt6图形渲染框架
-- 流畅的游戏交互体验 
-- 60FPS的平滑移动系统
-- 完美的视觉渲染，无残影无卡顿
-- **🍎 食物生成系统**: 随机生成彩色食物点
-- **💥 碰撞检测**: 实时碰撞检测和吞噬机制
-- **📈 成长系统**: 玩家吞噬食物后持续成长
-- **🏆 得分系统**: 实时计算和显示玩家得分
+AI Devour Evolve 致力于**完整复现GoBigger单人玩法**，采用C++/Qt开发，核心机制、物理、数值、动作空间、视觉体验等全部对齐GoBigger原版。支持高密度食物、荆棘球、孢子球、分裂、合并等全部玩法，性能极致优化，体验流畅不卡顿。
 
-### 快速开始
+---
+
+## 主要特性
+
+- 🟦 **玩家球/分身球**：支持分裂、合并、吞噬、冷却、刚体推开等全部机制
+- 🍎 **食物球**：高密度生成，性能优化，吞噬成长完全对齐GoBigger
+- 🟢 **孢子球**：喷射、碰撞、被荆棘球吸收等机制完整实现
+- 🌵 **荆棘球**：生成、分裂、分数范围、冷却、孢子加速等全部机制
+- 🧠 **动作空间/物理机制**：所有参数、判定、冷却、分数体系与GoBigger一致
+- 🔍 **四叉树空间分区**：支持3000+食物/荆棘球不卡顿，极致性能
+- 🎮 **视角缩放/分数显示**：动态缩放、总分数UI、体验与原版一致
+- 🛠️ **代码结构清晰**：便于AI接入、二次开发、机制扩展
+
+---
+
+## 编译与运行
+
+### 环境要求
+- Windows 10/11 + Visual Studio 2022 + Qt 6.5+ (建议6.9.1)
+- CMake 3.20+
+- LibTorch CPU版 (可选AI集成)
+- VS Code + C++/CMake Tools扩展
+
+### 一键编译运行
 ```bash
-# 1. Clone项目
-git clone [你的仓库地址]
-cd ai-devour-evolve
+# 1. 克隆项目
+ git clone [你的仓库地址]
+ cd ai-devour-evolve
 
-# 2. 用VS Code打开项目
-code .
+# 2. 配置CMake (MSVC)
+ cmake -B build -S . -G "Visual Studio 17 2022" -A x64
 
-# 3. 按照环境配置指南设置开发环境
-# 详见：develop-Documents/environment-setup-guide.md
+# 3. 编译主程序
+ cmake --build build --config Release
 
-# 4. 一键编译运行
-# 按F7编译，按F5运行，立即体验游戏原型！
-# 使用WASD或方向键控制蓝色细胞移动
+# 4. 运行主程序
+ ./build/bin/Release/ai-devour-evolve.exe
 ```
+或直接用VS Code任务面板：
+- `Configure CMake (MSVC)` → `Build Main Application` → `Run Application`
 
-### 🎮 游戏操作
-- **W键/↑键**: 向上移动
-- **S键/↓键**: 向下移动
-- **A键/←键**: 向左移动  
-- **D键/→键**: 向右移动
-- **组合按键**: 支持斜向移动 (如 W+D = 右上)
+---
 
-### 🎯 游戏目标
-- 控制蓝色细胞在场景中移动
-- 吞噬随机生成的彩色食物点
-- 通过吞噬食物让细胞不断成长
-- 获得更高的得分！
+## 玩法与机制对齐说明
 
-## 项目结构
+- **分裂/合并/冷却**：所有分裂球冷却期、合并判定、推开/吸附、分裂速度等全部与GoBigger一致
+- **荆棘球机制**：生成、分裂、分数分配、孢子加速、冷却等全部参数与原版同步
+- **食物/孢子/分身**：吞噬、喷射、碰撞、成长、分数体系完全一致
+- **性能优化**：四叉树空间分区，支持高密度食物/荆棘球不卡顿，体验接近GoBigger原版
+- **视角缩放/分数显示**：动态缩放、总分数UI、体验与原版一致
 
+---
+
+## 目录结构
 ```
 ai-devour-evolve/
-├── src/                    # Qt源代码
-│   ├── main.cpp           # 主程序入口  
-│   ├── GameView.h/cpp     # 游戏视图类 (新增)
-│   ├── PlayerCell.h/cpp   # 玩家细胞类 (新增)
-│   ├── DemoQtVS.cpp       # 主窗口实现
-│   ├── DemoQtVS.h         # 主窗口头文件
-│   └── DemoQtVS.ui        # UI界面文件
-├── develop-Documents/     # 开发文档 (新增)
-│   ├── phase1.md         # Phase 1开发指南
-│   ├── phase1-completion-report.md  # 完成报告
-│   └── environment-setup-guide.md  # 环境配置指南
-├── python/                # Python AI训练代码
-├── models/                # 训练好的AI模型文件
-├── build/                 # 编译输出目录
-├── CMakeLists.txt         # CMake配置文件
-├── COLLABORATION.md       # Git协作流程文档 (新增)
-├── test_torch.cpp         # LibTorch测试文件
-└── README.md              # 项目说明
+├── src/                # C++/Qt核心代码（全部机制）
+├── models/             # AI模型（可选）
+├── python/             # AI训练/测试脚本
+├── build/              # 编译输出
+├── develop-Documents/  # 开发文档/环境配置
+├── CMakeLists.txt      # CMake配置
+└── README.md           # 项目说明
 ```
 
-## 环境要求
+---
 
-- Qt 6.9.1 (MSVC2022_64 或 MinGW)
-- LibTorch CPU版本
-- Visual Studio 2022 或 MinGW
-- CMake 3.5+
-- VS Code + C++ + CMake Tools扩展
+## 未来计划 / TODO
+- 持续体验和细节优化，确保所有机制与GoBigger原版完全一致
+- 增强AI接口与训练支持，开放更多自定义玩法
+- 欢迎PR、建议与二次开发，共同完善高性能吞噬AI平台
 
-## 编译指南
+---
 
-```bash
-# 配置项目
-cmake -B build -S . -G "Visual Studio 17 2022" -A x64
+## 致谢
+- GoBigger开源项目及其社区
+- 所有贡献者与测试者
 
-# 编译项目
-cmake --build build --config Release
-```
+---
 
-## 团队分工
-
-- **队员A (HankDai13)**: Python AI训练总负责人 + C++项目架构师与AI集成工程师
-- **队员B**: C++网络与实现工程师
-
-## 协作流程
-
-请参考项目根目录下的 `COLLABORATION.md` 文件。
+如需详细机制说明、AI集成、二次开发等请查阅 `develop-Documents/` 或联系作者。
