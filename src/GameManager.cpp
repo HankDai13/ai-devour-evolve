@@ -474,8 +474,8 @@ void GameManager::checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2)
         qDebug() << "Player-Food collision detected!" 
                  << "Player radius:" << player->radius() 
                  << "Food radius:" << food->radius()
-                 << "Player mass:" << player->mass()
-                 << "Food mass:" << food->mass();
+                 << "Player score:" << player->score()
+                 << "Food score:" << food->score();
         
         if (player->canEat(food)) {
             qDebug() << "Player can eat food, eating now...";
@@ -497,8 +497,8 @@ void GameManager::checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2)
         qDebug() << "Player-Spore collision detected!" 
                  << "Player radius:" << player->radius() 
                  << "Spore radius:" << spore->radius()
-                 << "Player mass:" << player->mass()
-                 << "Spore mass:" << spore->mass()
+                 << "Player score:" << player->score()
+                 << "Spore score:" << spore->score()
                  << "Player team:" << player->teamId()
                  << "Spore team:" << spore->teamId()
                  << "Distance:" << player->distanceTo(spore);
@@ -508,9 +508,9 @@ void GameManager::checkCollisionsBetween(BaseBall* ball1, BaseBall* ball2)
             qDebug() << "Player CAN eat spore - eating now...";
             player->eat(spore);
         } else {
-            qDebug() << "Player CANNOT eat spore - mass ratio too small"
+            qDebug() << "Player CANNOT eat spore - score ratio too small"
                      << "Required ratio:" << GoBiggerConfig::EAT_RATIO
-                     << "Actual ratio:" << (player->mass() / spore->mass());
+                     << "Actual ratio:" << (player->score() / spore->score());
         }
     }
     

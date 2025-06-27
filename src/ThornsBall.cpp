@@ -9,15 +9,15 @@
 
 ThornsBall::ThornsBall(int ballId, const QPointF& position, const Border& border, 
                        const Config& config, QGraphicsItem* parent)
-    : BaseBall(ballId, position, GoBiggerConfig::THORNS_MIN_MASS, border, THORNS_BALL, parent)
+    : BaseBall(ballId, position, GoBiggerConfig::THORNS_MIN_SCORE, border, THORNS_BALL, parent)
     , m_config(config)
 {
-    // 生成随机质量
-    float minMass = GoBiggerConfig::THORNS_MIN_MASS;
-    float maxMass = GoBiggerConfig::THORNS_MAX_MASS;
+    // 生成随机分数
+    float minScore = GoBiggerConfig::THORNS_MIN_SCORE;
+    float maxScore = GoBiggerConfig::THORNS_MAX_SCORE;
     
-    float randomMass = minMass + (maxMass - minMass) * QRandomGenerator::global()->generateDouble();
-    setMass(randomMass);
+    float randomScore = minScore + (maxScore - minScore) * QRandomGenerator::global()->generateDouble();
+    setScore(randomScore);
     
     generateRandomColor();
 }
@@ -54,34 +54,34 @@ void ThornsBall::causeCollisionDamage(CloneBall* ball)
     }
     
     qDebug() << "ThornsBall collision with CloneBall" << ball->ballId() 
-             << "Original mass:" << ball->mass();
+             << "Original score:" << ball->score();
     
     // 计算伤害 - 降低伤害比例
-    float damage = ball->mass() * GoBiggerConfig::THORNS_DAMAGE_RATIO; // 使用配置伤害比例
-    float newMass = ball->mass() - damage;
+    float damage = ball->score() * GoBiggerConfig::THORNS_DAMAGE_RATIO; // 使用配置伤害比例
+    float newScore = ball->score() - damage;
     
     // 提高移除阈值，防止直接消失
-    if (newMass < GoBiggerConfig::CELL_MIN_MASS) { 
-        // 如果质量太低，设置为最小值而不是直接移除
-        newMass = GoBiggerConfig::CELL_MIN_MASS;
-        qDebug() << "Ball mass set to minimum by thorns";
+    if (newScore < GoBiggerConfig::CELL_MIN_SCORE) { 
+        // 如果分数太低，设置为最小值而不是直接移除
+        newScore = GoBiggerConfig::CELL_MIN_SCORE;
+        qDebug() << "Ball score set to minimum by thorns";
     }
     
-    // 减少质量
-    ball->setMass(newMass);
-    qDebug() << "Ball damaged by thorns, new mass:" << newMass;
+    // 减少分数
+    ball->setScore(newScore);
+    qDebug() << "Ball damaged by thorns, new score:" << newScore;
     
     // 如果球足够大，触发分裂
-    if (ball->mass() > GoBiggerConfig::SPLIT_MIN_MASS * 2) { // 调整分裂阈值
+    if (ball->score() > GoBiggerConfig::SPLIT_MIN_SCORE * 2) { // 调整分裂阈值
         // 计算分裂数量
         QRandomGenerator* rng = QRandomGenerator::global();
         int splitParts = rng->bounded(2, 4); // 分裂成2-3个部分
         
-        // 计算每个分裂部分的质量
-        float splitMass = ball->mass() / splitParts;
+        // 计算每个分裂部分的分数
+        float splitScore = ball->score() / splitParts;
         
-        // 设置原球的新质量
-        ball->setMass(splitMass);
+        // 设置原球的新分数
+        ball->setScore(splitScore);
         
         qDebug() << "Ball force-split by thorns into" << splitParts << "parts";
         

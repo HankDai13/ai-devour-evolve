@@ -24,9 +24,9 @@ GameView::GameView(QWidget *parent)
     , m_zoomFactor(1.0)
     , m_followPlayer(true)
     , m_targetZoom(1.0)
-    , m_minVisionRadius(100.0)     // 最小视野半径
-    , m_maxVisionRadius(500.0)     // 最大视野半径
-    , m_scaleUpRatio(1.8)          // 缩放比例，参考GoBigger
+    , m_minVisionRadius(200.0)     // 最小视野半径
+    , m_maxVisionRadius(800.0)     // 最大视野半径
+    , m_scaleUpRatio(2.2)          // 缩放比例，参考GoBigger
 {
     initializeView();
     initializePlayer();
@@ -91,8 +91,8 @@ void GameView::initializePlayer()
     m_mainPlayer = m_gameManager->createPlayer(0, 0, QPointF(0, 0)); // 团队0，玩家0，中心位置
     
     if (m_mainPlayer) {
-        // 设置一个合理的初始质量，让玩家球更大一些
-        m_mainPlayer->setMass(GoBiggerConfig::CELL_INIT_MASS); // 使用新的标准初始质量
+        // 设置一个合理的初始分数，让玩家球更大一些
+        m_mainPlayer->setScore(GoBiggerConfig::CELL_INIT_SCORE); // 使用新的标准初始分数
         
         // 立即将视图中心设置到玩家位置
         centerOn(m_mainPlayer->pos());
@@ -100,7 +100,7 @@ void GameView::initializePlayer()
         qDebug() << "Main player created with ID:" << m_mainPlayer->ballId() 
                  << "at position:" << m_mainPlayer->pos()
                  << "with radius:" << m_mainPlayer->radius()
-                 << "with mass:" << m_mainPlayer->mass();
+                 << "with score:" << m_mainPlayer->score();
     } else {
         qDebug() << "Failed to create main player!";
     }
@@ -502,7 +502,7 @@ void GameView::handleEjectAction()
         if (!ball || ball->isRemoved()) continue;
         
         qDebug() << "Ball" << ball->ballId() << "canEject:" << ball->canEject() 
-                 << "mass:" << ball->mass();
+                 << "score:" << ball->score();
         
         if (ball->canEject()) {
             // 每个球独立计算到鼠标的喷射方向
@@ -607,20 +607,20 @@ QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) c
     }
     
     // GoBigger风格：根据质量计算加权质心
-    float totalMass = 0;
+    float totalScore = 0;
     QPointF weightedSum(0, 0);
     
     for (CloneBall* ball : balls) {
         if (ball && !ball->isRemoved()) {
-            float mass = ball->mass();
+            float score = ball->score();
             QPointF pos = ball->pos();
-            weightedSum += pos * mass;
-            totalMass += mass;
+            weightedSum += pos * score;
+            totalScore += score;
         }
     }
     
-    if (totalMass > 0) {
-        return weightedSum / totalMass;
+    if (totalScore > 0) {
+        return weightedSum / totalScore;
     } else {
         return balls.first()->pos(); // 备选方案
     }

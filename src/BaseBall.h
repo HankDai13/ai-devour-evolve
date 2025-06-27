@@ -37,7 +37,7 @@ public:
         THORNS_BALL    // 荆棘球
     };
 
-    BaseBall(int ballId, const QPointF& position, float mass, const Border& border, BallType type, QGraphicsItem* parent = nullptr);
+    BaseBall(int ballId, const QPointF& position, float score, const Border& border, BallType type, QGraphicsItem* parent = nullptr);
     
     virtual ~BaseBall() = default;
 
@@ -47,7 +47,7 @@ public:
 
     // 基础属性访问
     int ballId() const { return m_ballId; }
-    float mass() const { return m_mass; }
+    float score() const { return m_score; }
     float radius() const { return m_radius; }
     BallType ballType() const { return m_ballType; }
     const Border& border() const { return m_border; }
@@ -58,7 +58,7 @@ public:
     QVector2D acceleration() const { return m_acceleration; }
     
     // 设置属性
-    void setMass(float mass);
+    void setScore(float score);
     void setVelocity(const QVector2D& velocity) { m_velocity = velocity; }
     void setAcceleration(const QVector2D& acceleration) { m_acceleration = acceleration; }
     
@@ -81,12 +81,12 @@ public:
 signals:
     void ballRemoved(BaseBall* ball);
     void ballEaten(BaseBall* eater, BaseBall* eaten);
-    void massChanged(float newMass);
+    void scoreChanged(float newScore);
 
 protected:
     // 属性
     int m_ballId;
-    float m_mass;
+    float m_score;
     float m_radius;
     BallType m_ballType;
     Border m_border;

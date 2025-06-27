@@ -8,7 +8,7 @@
 
 SporeBall::SporeBall(int ballId, const QPointF& position, const Border& border, 
                      int teamId, int playerId, const QVector2D& direction, const Config& config, QGraphicsItem* parent)
-    : BaseBall(ballId, position, GoBiggerConfig::EJECT_MASS, border, SPORE_BALL, parent)
+    : BaseBall(ballId, position, GoBiggerConfig::EJECT_SCORE, border, SPORE_BALL, parent)
     , m_config(config)
     , m_teamId(teamId)
     , m_playerId(playerId)
@@ -166,7 +166,7 @@ QColor SporeBall::getTeamColor(int teamId) const
 SporeBall::SporeBall(int ballId, const QPointF& position, const Border& border, 
                      int teamId, int playerId, const QVector2D& direction, const QVector2D& parentVelocity,
                      const Config& config, QGraphicsItem* parent)
-    : BaseBall(ballId, position, GoBiggerConfig::EJECT_MASS, border, SPORE_BALL, parent)
+    : BaseBall(ballId, position, GoBiggerConfig::EJECT_SCORE, border, SPORE_BALL, parent)
     , m_config(config)
     , m_teamId(teamId)
     , m_playerId(playerId)

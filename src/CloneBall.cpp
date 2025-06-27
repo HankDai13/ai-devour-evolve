@@ -10,7 +10,7 @@
 
 CloneBall::CloneBall(int ballId, const QPointF& position, const Border& border, int teamId, int playerId, 
                      const Config& config, QGraphicsItem* parent)
-    : BaseBall(ballId, position, GoBiggerConfig::CELL_INIT_MASS, border, CLONE_BALL, parent) // 使用标准初始质量
+    : BaseBall(ballId, position, GoBiggerConfig::CELL_INIT_SCORE, border, CLONE_BALL, parent) // 使用标准初始分数
     , m_config(config)
     , m_teamId(teamId)
     , m_playerId(playerId)
@@ -56,16 +56,16 @@ void CloneBall::initializeTimers()
 
 bool CloneBall::canSplit() const
 {
-    // 简化分裂判定，只检查质量
-    return m_mass >= GoBiggerConfig::SPLIT_MIN_MASS;
+    // 简化分裂判定，只检查分数
+    return m_score >= GoBiggerConfig::SPLIT_MIN_SCORE;
 }
 
 bool CloneBall::canEject() const
 {
     // 使用GoBigger标准：score >= 3200才能喷射孢子
-    bool canEject = m_mass >= GoBiggerConfig::EJECT_MIN_MASS;
-    qDebug() << "Ball" << m_ballId << "canEject check: mass=" << m_mass 
-             << "EJECT_MIN_MASS=" << GoBiggerConfig::EJECT_MIN_MASS 
+    bool canEject = m_score >= GoBiggerConfig::EJECT_MIN_SCORE;
+    qDebug() << "Ball" << m_ballId << "canEject check: score=" << m_score 
+             << "EJECT_MIN_SCORE=" << GoBiggerConfig::EJECT_MIN_SCORE 
              << "result=" << canEject;
     return canEject;
 }
@@ -92,8 +92,8 @@ QVector<CloneBall*> CloneBall::performSplit(const QVector2D& direction)
         return newBalls;
     }
     
-    // 计算分裂后的质量 - 使用GoBigger标准
-    float splitMass = m_mass / 2.0f;
+    // 计算分裂后的分数 - 使用GoBigger标准
+    float splitScore = m_score / 2.0f;
     
     // 计算分裂位置 - 参考GoBigger: position + direction * (radius * 2)
     QVector2D splitDir = direction.length() > 0.01 ? direction.normalized() : m_moveDirection.normalized();
@@ -113,9 +113,9 @@ QVector<CloneBall*> CloneBall::performSplit(const QVector2D& direction)
         m_config
     );
     
-    // 设置质量
-    setMass(splitMass);
-    newBall->setMass(splitMass);
+    // 设置分数
+    setScore(splitScore);
+    newBall->setScore(splitScore);
     
     // 应用分裂速度 - 参考GoBigger的分裂速度计算
     float splitVelMagnitude = calculateSplitVelocityFromSplit(radius());
@@ -166,16 +166,16 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
         sporeDirection = m_moveDirection.length() > 0.01 ? m_moveDirection.normalized() : QVector2D(1, 0);
     }
     
-    // 使用GoBigger标准孢子质量和消耗
-    float sporeMass = GoBiggerConfig::EJECT_MASS;
-    float massLoss = m_mass * GoBiggerConfig::EJECT_COST_RATIO;
-    massLoss = std::max(massLoss, sporeMass); // 至少消耗孢子质量
+    // 使用GoBigger标准孢子分数和消耗
+    float sporeScore = GoBiggerConfig::EJECT_SCORE;
+    float scoreLoss = m_score * GoBiggerConfig::EJECT_COST_RATIO;
+    scoreLoss = std::max(scoreLoss, (float)sporeScore); // 至少消耗孢子分数
     
-    // 减少自己的质量
-    setMass(m_mass - massLoss);
+    // 减少自己的分数
+    setScore(m_score - scoreLoss);
     
     // 计算孢子位置：在玩家球边缘外切，增加距离避免立即重叠
-    float sporeRadius = GoBiggerConfig::massToRadius(sporeMass);
+    float sporeRadius = GoBiggerConfig::scoreToRadius(sporeScore);
     float safeDistance = (radius() + sporeRadius) * 2.0f; // 增加到2倍安全距离
     
     // 添加随机偏移，避免多个孢子重叠在完全相同的位置
@@ -315,7 +315,7 @@ void CloneBall::eat(BaseBall* other)
 {
     if (canEat(other)) {
         BaseBall::eat(other);
-        qDebug() << "CloneBall" << ballId() << "ate" << other->ballId() << "gaining mass:" << other->mass();
+        qDebug() << "CloneBall" << ballId() << "ate" << other->ballId() << "gaining score:" << other->score();
     }
 }
 
@@ -450,9 +450,9 @@ void CloneBall::propagateMovementToGroup(const QVector2D& direction)
 void CloneBall::applyScoreDecay()
 {
     // 使用GoBigger标准衰减
-    if (m_mass > GoBiggerConfig::DECAY_START_MASS) {
-        float decay = m_mass * GoBiggerConfig::DECAY_RATE;
-        setMass(std::max((float)GoBiggerConfig::CELL_MIN_MASS, m_mass - decay));
+    if (m_score > GoBiggerConfig::DECAY_START_SCORE) {
+        float decay = m_score * GoBiggerConfig::DECAY_RATE;
+        setScore(std::max((float)GoBiggerConfig::CELL_MIN_SCORE, m_score - decay));
     }
 }
 
@@ -580,12 +580,12 @@ void CloneBall::mergeWith(CloneBall* other)
         return;
     }
     
-    // 合并质量
-    float combinedMass = m_mass + other->mass();
-    setMass(combinedMass);
+    // 合并分数
+    float combinedScore = m_score + other->score();
+    setScore(combinedScore);
     
     // 合并速度(加权平均)
-    QVector2D combinedVelocity = (m_velocity * m_mass + other->velocity() * other->mass()) / combinedMass;
+    QVector2D combinedVelocity = (m_velocity * m_score + other->velocity() * other->score()) / combinedScore;
     setVelocity(combinedVelocity);
     
     // 重置分裂计时器
@@ -601,7 +601,7 @@ void CloneBall::mergeWith(CloneBall* other)
     }
     
     qDebug() << "Ball" << m_ballId << "merged with ball" << other->ballId() 
-             << "new mass:" << combinedMass;
+             << "new score:" << combinedScore;
 }
 
 void CloneBall::checkForMerge()
@@ -663,10 +663,10 @@ void CloneBall::rigidCollision(CloneBall* other)
         qreal overlap = totalRadius - distance;
         qreal force = std::min(overlap, overlap / (distance + 1e-8));
         
-        // 根据质量比例分配推开距离
-        qreal totalMass = m_mass + other->mass();
-        qreal myRatio = other->mass() / totalMass;
-        qreal otherRatio = m_mass / totalMass;
+        // 根据分数比例分配推开距离
+        qreal totalScore = m_score + other->score();
+        qreal myRatio = other->score() / totalScore;
+        qreal otherRatio = m_score / totalScore;
         
         // 单位向量
         QVector2D pushDirection(p.x() / distance, p.y() / distance);
@@ -750,16 +750,16 @@ void CloneBall::applyCenteringForce()
     
     // 计算中心位置（所有分裂球的质心）
     QPointF centerPos(0, 0);
-    float totalMass = 0;
+    float totalScore = 0;
     
     for (CloneBall* ball : targetBalls) {
-        centerPos += ball->pos() * ball->mass();
-        totalMass += ball->mass();
+        centerPos += ball->pos() * ball->score();
+        totalScore += ball->score();
     }
-    centerPos += pos() * m_mass;
-    totalMass += m_mass;
+    centerPos += pos() * m_score;
+    totalScore += m_score;
     
-    centerPos /= totalMass;
+    centerPos /= totalScore;
     
     // 计算向心力
     QPointF direction = centerPos - pos();

@@ -4,17 +4,17 @@
 #include <QDebug>
 
 FoodBall::FoodBall(int ballId, const QPointF& position, const Border& border, const Config& config, QGraphicsItem* parent)
-    : BaseBall(ballId, position, GoBiggerConfig::FOOD_MASS, border, FOOD_BALL, parent)
+    : BaseBall(ballId, position, GoBiggerConfig::FOOD_SCORE, border, FOOD_BALL, parent)
     , m_config(config)
 {
-    // 生成随机质量（在GoBigger标准范围内，但更大一些）
-    float minMass = GoBiggerConfig::FOOD_MIN_MASS;
-    float maxMass = GoBiggerConfig::FOOD_MAX_MASS;
+    // 使用GoBigger标准食物分数（固定100分）
+    float minScore = GoBiggerConfig::FOOD_MIN_SCORE;
+    float maxScore = GoBiggerConfig::FOOD_MAX_SCORE;
     
-    float randomMass = minMass + (maxMass - minMass) * QRandomGenerator::global()->generateDouble();
-    setMass(randomMass);
+    float randomScore = minScore + (maxScore - minScore) * QRandomGenerator::global()->generateDouble();
+    setScore(randomScore);
     
-    qDebug() << "FoodBall created with mass:" << mass() << "radius:" << radius();
+    qDebug() << "FoodBall created with score:" << score() << "radius:" << radius();
     
     generateRandomColor();
 }

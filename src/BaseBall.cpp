@@ -4,10 +4,10 @@
 #include <QGraphicsScene>
 #include <cmath>
 
-BaseBall::BaseBall(int ballId, const QPointF& position, float mass, const Border& border, BallType type, QGraphicsItem* parent)
+BaseBall::BaseBall(int ballId, const QPointF& position, float score, const Border& border, BallType type, QGraphicsItem* parent)
     : QGraphicsObject(parent)
     , m_ballId(ballId)
-    , m_mass(mass)
+    , m_score(score)
     , m_ballType(type)
     , m_border(border)
     , m_isRemoved(false)
@@ -37,21 +37,21 @@ void BaseBall::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
     painter->drawEllipse(QRectF(-m_radius, -m_radius, 2 * m_radius, 2 * m_radius));
 }
 
-void BaseBall::setMass(float mass)
+void BaseBall::setScore(float score)
 {
-    if (mass != m_mass) {
-        m_mass = std::max(0.1f, mass); // 改为最小0.1，允许小质量孢子
+    if (score != m_score) {
+        m_score = std::max(100.0f, score); // 最小分数为100，对齐GoBigger标准
         updateRadius();
-        emit massChanged(m_mass);
+        emit scoreChanged(m_score);
         
-        qDebug() << "Ball" << m_ballId << "mass updated to" << m_mass 
+        qDebug() << "Ball" << m_ballId << "score updated to" << m_score 
                  << "radius:" << m_radius;
     }
 }
 
 void BaseBall::updateRadius()
 {
-    m_radius = std::sqrt(m_mass / M_PI) * GoBiggerConfig::MASS_TO_RADIUS_RATIO;
+    m_radius = GoBiggerConfig::scoreToRadius(m_score);
 }
 
 void BaseBall::move(const QVector2D& direction, qreal duration)
@@ -59,7 +59,7 @@ void BaseBall::move(const QVector2D& direction, qreal duration)
     // 基础移动实现 - 更丝滑的移动
     if (direction.length() > 0.01) {
         // 使用GoBigger标准速度计算，但更平滑
-        float maxSpeed = GoBiggerConfig::BASE_SPEED / std::sqrt(m_mass / GoBiggerConfig::CELL_MIN_MASS);
+        float maxSpeed = GoBiggerConfig::BASE_SPEED / std::sqrt(m_score / GoBiggerConfig::CELL_MIN_SCORE);
         
         // 更平滑的加速度控制
         QVector2D targetVelocity = direction.normalized() * maxSpeed;
@@ -97,11 +97,11 @@ bool BaseBall::canEat(BaseBall* other) const
     }
     
     // 使用GoBigger标准吞噬比例
-    bool canEatResult = m_mass >= other->mass() * GoBiggerConfig::EAT_RATIO;
+    bool canEatResult = m_score >= other->score() * GoBiggerConfig::EAT_RATIO;
     
-    qDebug() << "canEat check: eater mass=" << m_mass 
-             << "target mass=" << other->mass() 
-             << "ratio=" << (m_mass / other->mass())
+    qDebug() << "canEat check: eater score=" << m_score 
+             << "target score=" << other->score() 
+             << "ratio=" << (m_score / other->score())
              << "threshold=" << GoBiggerConfig::EAT_RATIO
              << "result=" << canEatResult;
     
@@ -114,14 +114,14 @@ void BaseBall::eat(BaseBall* other)
         return;
     }
     
-    float gainedMass = other->mass();
-    float newMass = m_mass + gainedMass;
+    float gainedScore = other->score();
+    float newScore = m_score + gainedScore;
     
     qDebug() << "Ball" << m_ballId << "eating ball" << other->ballId()
-             << "gained mass:" << gainedMass 
-             << "new total mass:" << newMass;
+             << "gained score:" << gainedScore 
+             << "new total score:" << newScore;
     
-    setMass(newMass);
+    setScore(newScore);
     other->remove();
     
     emit ballEaten(this, other);
