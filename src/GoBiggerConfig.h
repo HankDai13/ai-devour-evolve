@@ -17,9 +17,9 @@ constexpr int CELL_MAX_MASS = 22500;               // 最大质量(半径300时)
 constexpr float MASS_TO_RADIUS_RATIO = 1.4f;       // 质量到半径转换: radius = sqrt(mass) * 1.4（再次增大）
 
 // 移动参数 (基于GoBigger动态计算)
-constexpr float BASE_SPEED = 100.0f;               // 基础移动速度
+constexpr float BASE_SPEED = 90.0f;               // 基础移动速度
 constexpr float SPEED_DECAY_FACTOR = 1.0f;         // 速度衰减因子
-constexpr float ACCELERATION_FACTOR = 1.8f;        // 加速度因子
+constexpr float ACCELERATION_FACTOR = 1.6f;        // 加速度因子
 constexpr float SPEED_RADIUS_COEFF_A = 2.35f;      // 速度计算系数A
 constexpr float SPEED_RADIUS_COEFF_B = 5.66f;      // 速度计算系数B
 // 实际速度 = BASE_SPEED / sqrt(mass / CELL_MIN_MASS)
