@@ -44,6 +44,7 @@ public:
     
     // 玩家操作
     void setMoveDirection(const QVector2D& direction);
+    void applyGoBiggerMovement(const QVector2D& playerInput, const QVector2D& centerForce); // 新增：GoBigger风格移动
     QVector<CloneBall*> performSplit(const QVector2D& direction);
     SporeBall* ejectSpore(const QVector2D& direction);
     

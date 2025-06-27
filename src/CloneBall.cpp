@@ -775,3 +775,50 @@ void CloneBall::applyCenteringForce()
         setVelocity(currentVel + centeringForce * 0.1); // 进一步减小影响
     }
 }
+
+void CloneBall::applyGoBiggerMovement(const QVector2D& playerInput, const QVector2D& centerForce)
+{
+    // GoBigger风格的双重加速度控制，提升速度和丝滑度
+    // 参考原版：given_acc (玩家输入) + given_acc_center (向心力)
+    
+    float currentRadius = radius();
+    
+    // 1. 处理玩家输入加速度 (given_acc) - 增大系数提升响应速度
+    QVector2D givenAcc(0, 0);
+    if (playerInput.length() > 0.01) {
+        QVector2D normalizedInput = playerInput.length() > 1.0f ? playerInput.normalized() : playerInput;
+        givenAcc = normalizedInput * GoBiggerConfig::ACCELERATION_FACTOR * 50.0f; // 增大加速度响应
+    }
+    
+    // 2. 处理向心力加速度 (given_acc_center)  
+    QVector2D centerAcc(0, 0);
+    if (centerForce.length() > 0.01) {
+        QVector2D normalizedCenter = centerForce.length() > 1.0f ? centerForce.normalized() : centerForce;
+        // 参考原版：given_acc_center = given_acc_center / self.radius
+        centerAcc = normalizedCenter / currentRadius * 15.0f; // 增强向心力
+    }
+    
+    // 3. 计算总加速度
+    QVector2D totalAcc = givenAcc + centerAcc;
+    
+    // 4. 计算最大速度限制（参考原版公式） - 提升速度倍数
+    float inputRatio = std::max(playerInput.length(), centerForce.length());
+    float maxSpeed = GoBiggerConfig::calculateDynamicSpeed(currentRadius, inputRatio) * 1.5f; // 提升速度倍数
+    
+    // 5. 更新速度（简化版，类似原版的vel_given更新） - 更快的时间步长
+    QVector2D newVelocity = velocity() + totalAcc * 0.02f; // 增大时间步长提升响应
+    
+    // 6. 限制最大速度
+    if (newVelocity.length() > maxSpeed) {
+        newVelocity = newVelocity.normalized() * maxSpeed;
+    }
+    
+    // 7. 应用速度
+    setVelocity(newVelocity);
+    
+    // 8. 更新方向（参考原版update_direction） - 只有在有输入时才更新
+    if (playerInput.length() > 0.01) {
+        m_moveDirection = playerInput; // 确保方向箭头正确显示
+        updateDirection();
+    }
+}

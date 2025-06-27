@@ -12,6 +12,7 @@
 #include <QColor>
 #include <QVector2D>
 #include <QDebug>
+#include <QCursor>
 #include <cmath>
 
 GameView::GameView(QWidget *parent) 
@@ -149,14 +150,14 @@ void GameView::keyPressEvent(QKeyEvent *event)
     
     qDebug() << "Key pressed:" << event->key() << "Text:" << event->text();
     
-    // 处理特殊按键 - 立即处理，不依赖于其他按键状态
+    // GoBigger风格按键映射
     switch (event->key()) {
-        case Qt::Key_Space:
-            qDebug() << "Space key detected - calling handleSplitAction";
+        case Qt::Key_W:
+            qDebug() << "W key detected - calling handleSplitAction";
             handleSplitAction();
             break;
-        case Qt::Key_R:
-            qDebug() << "R key detected - calling handleEjectAction";
+        case Qt::Key_Q:
+            qDebug() << "Q key detected - calling handleEjectAction";
             handleEjectAction();
             break;
         case Qt::Key_P:
@@ -169,6 +170,7 @@ void GameView::keyPressEvent(QKeyEvent *event)
         case Qt::Key_Escape:
             resetGame();
             break;
+        // 移除WASD移动控制，改为鼠标控制
     }
     
     QGraphicsView::keyPressEvent(event);
@@ -182,12 +184,7 @@ void GameView::keyReleaseEvent(QKeyEvent *event)
 
 void GameView::mousePressEvent(QMouseEvent *event)
 {
-    if (event->button() == Qt::LeftButton) {
-        handleSplitAction();
-    } else if (event->button() == Qt::RightButton) {
-        handleEjectAction();
-    }
-    
+    // GoBigger风格：移除鼠标点击分裂/喷射，专注于鼠标位置控制移动
     QGraphicsView::mousePressEvent(event);
 }
 
@@ -221,37 +218,86 @@ void GameView::processInput()
     if (!m_mainPlayer || m_mainPlayer->isRemoved()) {
         return;
     }
+
+    // GoBigger风格：获取所有玩家球（包括分裂球）
+    QVector<CloneBall*> allPlayerBalls = getAllPlayerBalls();
     
-    QVector2D moveDirection = calculateMoveDirection();
-    
-    if (moveDirection.length() > 0.01) {
-        m_mainPlayer->setMoveDirection(moveDirection);
-    } else {
-        m_mainPlayer->setMoveDirection(QVector2D(0, 0));
+    if (allPlayerBalls.isEmpty()) {
+        return;
     }
+
+    // 计算质心位置（用于向心力计算）
+    QPointF centroid = calculatePlayerCentroidAll(allPlayerBalls);
+    
+    // 获取鼠标在场景中的位置
+    QPoint mousePos = mapFromGlobal(QCursor::pos());
+    QPointF sceneMousePos = mapToScene(mousePos);
+    
+    // 对每个球应用GoBigger的独立控制机制
+    for (CloneBall* ball : allPlayerBalls) {
+        if (!ball || ball->isRemoved()) continue;
+        
+        // 1. 每个球独立计算到鼠标的方向（关键修复！）
+        QPointF ballPos = ball->pos();
+        QVector2D toMouse(sceneMousePos.x() - ballPos.x(), sceneMousePos.y() - ballPos.y());
+        
+        // 只有当鼠标距离足够远时才移动（避免在球中心时抖动）
+        float minDistance = 15.0f;
+        QVector2D playerInput(0, 0);
+        if (toMouse.length() > minDistance) {
+            playerInput = toMouse.normalized();
+        }
+        
+        // 2. 向心力加速度 (given_acc_center) - 只在有多个球时生效
+        QVector2D centerForce(0, 0);
+        if (allPlayerBalls.size() > 1) {
+            QVector2D toCenter(centroid.x() - ballPos.x(), centroid.y() - ballPos.y());
+            if (toCenter.length() > ball->radius() * 1.5) { // 只有距离中心足够远才应用向心力
+                centerForce = toCenter.normalized() * (toCenter.length() / 200.0f); // 基于距离的向心力
+            }
+        }
+        
+        // 应用GoBigger风格的移动控制
+        ball->applyGoBiggerMovement(playerInput, centerForce);
+        
+        // 更新球的移动方向（用于箭头显示）
+        ball->setMoveDirection(playerInput);
+    }
+}
+
+QVector2D GameView::calculateMouseDirection() const
+{
+    // 获取鼠标在视图中的位置
+    QPoint mousePos = mapFromGlobal(QCursor::pos());
+    
+    // 转换为场景坐标
+    QPointF sceneMousePos = mapToScene(mousePos);
+    
+    // 计算玩家质心位置
+    QPointF playerCentroid = calculatePlayerCentroid();
+    
+    // 计算从玩家到鼠标的方向向量
+    QVector2D direction(sceneMousePos.x() - playerCentroid.x(), 
+                       sceneMousePos.y() - playerCentroid.y());
+    
+    // 只有当鼠标距离足够远时才移动（避免鼠标在球中心时抖动）
+    float minDistance = 10.0f;
+    if (direction.length() < minDistance) {
+        return QVector2D(0, 0);
+    }
+    
+    return direction.normalized();
 }
 
 QVector2D GameView::calculateMoveDirection() const
 {
+    // 保留旧的WASD方法作为备用（可能在调试时有用）
     QVector2D direction(0, 0);
     
-    // WASD 或方向键移动
-    if (m_pressedKeys.contains(Qt::Key_W) || m_pressedKeys.contains(Qt::Key_Up)) {
-        direction.setY(direction.y() - 1);
-    }
-    if (m_pressedKeys.contains(Qt::Key_S) || m_pressedKeys.contains(Qt::Key_Down)) {
-        direction.setY(direction.y() + 1);
-    }
-    if (m_pressedKeys.contains(Qt::Key_A) || m_pressedKeys.contains(Qt::Key_Left)) {
-        direction.setX(direction.x() - 1);
-    }
-    if (m_pressedKeys.contains(Qt::Key_D) || m_pressedKeys.contains(Qt::Key_Right)) {
-        direction.setX(direction.x() + 1);
-    }
-    
-    if (direction.length() > 0) {
-        qDebug() << "Movement input detected:" << direction.x() << direction.y();
-    }
+    // 移除WASD移动，现在仅用于其他功能
+    // if (m_pressedKeys.contains(Qt::Key_W) || m_pressedKeys.contains(Qt::Key_Up)) {
+    //     direction.setY(direction.y() - 1);
+    // }
     
     return direction.length() > 0 ? direction.normalized() : direction;
 }
@@ -354,16 +400,41 @@ void GameView::handleSplitAction()
         return;
     }
     
-    if (m_mainPlayer->canSplit()) {
-        QVector2D splitDirection = calculateMoveDirection();
-        if (splitDirection.length() < 0.01) {
-            splitDirection = QVector2D(1, 0); // 默认向右分裂
-        }
+    // GoBigger风格：所有玩家球都能分裂
+    QVector<CloneBall*> allPlayerBalls = getAllPlayerBalls();
+    
+    // 获取鼠标位置用于分裂方向
+    QPoint mousePos = mapFromGlobal(QCursor::pos());
+    QPointF sceneMousePos = mapToScene(mousePos);
+    
+    QVector<CloneBall*> allNewBalls;
+    
+    for (CloneBall* ball : allPlayerBalls) {
+        if (!ball || ball->isRemoved()) continue;
         
-        QVector<CloneBall*> newBalls = m_mainPlayer->performSplit(splitDirection);
-        qDebug() << "Split performed, created" << newBalls.size() << "new balls";
+        if (ball->canSplit()) {
+            // 每个球独立计算到鼠标的分裂方向
+            QPointF ballPos = ball->pos();
+            QVector2D toMouse(sceneMousePos.x() - ballPos.x(), sceneMousePos.y() - ballPos.y());
+            
+            QVector2D splitDirection;
+            if (toMouse.length() > 10.0f) {
+                splitDirection = toMouse.normalized();
+            } else {
+                splitDirection = QVector2D(1, 0); // 默认向右分裂
+            }
+            
+            QVector<CloneBall*> newBalls = ball->performSplit(splitDirection);
+            allNewBalls.append(newBalls);
+            
+            qDebug() << "Ball" << ball->ballId() << "split, created" << newBalls.size() << "new balls";
+        }
+    }
+    
+    if (!allNewBalls.isEmpty()) {
+        qDebug() << "Total split performed, created" << allNewBalls.size() << "new balls";
     } else {
-        qDebug() << "Cannot split: insufficient score or cooldown";
+        qDebug() << "No balls could split: insufficient score or cooldown";
     }
 }
 
@@ -376,36 +447,52 @@ void GameView::handleEjectAction()
         return;
     }
     
-    qDebug() << "Player canEject:" << m_mainPlayer->canEject() 
-             << "Player mass:" << m_mainPlayer->mass();
+    // GoBigger风格：所有玩家球都能吐孢子
+    QVector<CloneBall*> allPlayerBalls = getAllPlayerBalls();
     
-    if (m_mainPlayer->canEject()) {
-        // 获取当前移动方向，如果没有移动则使用默认方向
-        QVector2D ejectDirection = calculateMoveDirection();
+    // 获取鼠标位置用于孢子方向
+    QPoint mousePos = mapFromGlobal(QCursor::pos());
+    QPointF sceneMousePos = mapToScene(mousePos);
+    
+    QVector<SporeBall*> allSpores;
+    
+    for (CloneBall* ball : allPlayerBalls) {
+        if (!ball || ball->isRemoved()) continue;
         
-        qDebug() << "Current move direction:" << ejectDirection.x() << ejectDirection.y()
-                 << "Pressed keys count:" << m_pressedKeys.size();
+        qDebug() << "Ball" << ball->ballId() << "canEject:" << ball->canEject() 
+                 << "mass:" << ball->mass();
         
-        // 如果没有移动方向，使用默认向右
-        if (ejectDirection.length() < 0.01) {
-            ejectDirection = QVector2D(1, 0); // 默认向右喷射
-            qDebug() << "Using default direction (right)";
-        } else {
-            qDebug() << "Using movement direction for ejection";
+        if (ball->canEject()) {
+            // 每个球独立计算到鼠标的喷射方向
+            QPointF ballPos = ball->pos();
+            QVector2D toMouse(sceneMousePos.x() - ballPos.x(), sceneMousePos.y() - ballPos.y());
+            
+            QVector2D ejectDirection;
+            if (toMouse.length() > 10.0f) {
+                ejectDirection = toMouse.normalized();
+            } else {
+                ejectDirection = QVector2D(1, 0); // 默认向右喷射
+            }
+            
+            qDebug() << "Ball" << ball->ballId() << "ejecting spore in direction:" 
+                     << ejectDirection.x() << ejectDirection.y();
+            
+            auto* spore = ball->ejectSpore(ejectDirection);
+            if (spore) {
+                allSpores.append(spore);
+                qDebug() << "Ball" << ball->ballId() << "ejected spore successfully at position:" 
+                         << spore->pos().x() << spore->pos().y()
+                         << "with velocity:" << spore->velocity().length();
+            } else {
+                qDebug() << "Ball" << ball->ballId() << "failed to create spore";
+            }
         }
-        
-        qDebug() << "Ejecting spore in direction:" << ejectDirection.x() << ejectDirection.y();
-        
-        auto* spore = m_mainPlayer->ejectSpore(ejectDirection);
-        if (spore) {
-            qDebug() << "Spore ejected successfully at position:" 
-                     << spore->pos().x() << spore->pos().y()
-                     << "with velocity:" << spore->velocity().length();
-        } else {
-            qDebug() << "Failed to create spore";
-        }
+    }
+    
+    if (!allSpores.isEmpty()) {
+        qDebug() << "Total spores ejected:" << allSpores.size();
     } else {
-        qDebug() << "Cannot eject: insufficient score";
+        qDebug() << "No balls could eject: insufficient score";
     }
 }
 
@@ -449,5 +536,50 @@ void GameView::onPlayerRemoved(CloneBall* player)
                 break;
             }
         }
+    }
+}
+
+QVector<CloneBall*> GameView::getAllPlayerBalls() const
+{
+    QVector<CloneBall*> allBalls;
+    
+    if (!m_gameManager) {
+        return allBalls;
+    }
+    
+    // 获取游戏管理器中的所有玩家球
+    QVector<CloneBall*> players = m_gameManager->getPlayers();
+    for (CloneBall* player : players) {
+        if (player && !player->isRemoved() && player->teamId() == 0) { // 只获取team 0的球
+            allBalls.append(player);
+        }
+    }
+    
+    return allBalls;
+}
+
+QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) const
+{
+    if (balls.isEmpty()) {
+        return QPointF(0, 0);
+    }
+    
+    // GoBigger风格：根据质量计算加权质心
+    float totalMass = 0;
+    QPointF weightedSum(0, 0);
+    
+    for (CloneBall* ball : balls) {
+        if (ball && !ball->isRemoved()) {
+            float mass = ball->mass();
+            QPointF pos = ball->pos();
+            weightedSum += pos * mass;
+            totalMass += mass;
+        }
+    }
+    
+    if (totalMass > 0) {
+        return weightedSum / totalMass;
+    } else {
+        return balls.first()->pos(); // 备选方案
     }
 }

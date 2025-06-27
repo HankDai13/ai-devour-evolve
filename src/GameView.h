@@ -70,6 +70,11 @@ private:
     // 输入处理
     void processInput();
     QVector2D calculateMoveDirection() const;
+    QVector2D calculateMouseDirection() const;  // 新增：鼠标方向计算
+    
+    // GoBigger风格玩家球管理
+    QVector<CloneBall*> getAllPlayerBalls() const;
+    QPointF calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) const;
     
     // 视图更新
     void updateCamera();
