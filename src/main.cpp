@@ -1,24 +1,96 @@
-#include "DemoQtVS.h"
-
 #include <QApplication>
 #include <QMainWindow>
-
-// 注释掉MSVC特定的pragma，MinGW不需要
-// #pragma comment(lib, "user32.lib")
+#include <QMenuBar>
+#include <QAction>
+#include <QStatusBar>
+#include <QLabel>
+#include <QTimer>
+#include <QMessageBox>
+#include "GameView.h"
+#include "CloneBall.h"  // 添加CloneBall头文件
 
 int main(int argc, char *argv[])
 {
-    // 1. 创建应用程序对象，这是每个Qt程序都必须的
     QApplication app(argc, argv);
-
-    // 2. 创建一个主窗口
     QMainWindow mainWindow;
-    mainWindow.setWindowTitle("智能吞噬进化 - 开发原型"); // 设置窗口标题
-    mainWindow.setFixedSize(800, 600);                // 设置窗口大小为800x600
-
-    // 3. 显示主窗口
+    
+    // 创建GameView实例
+    GameView *gameView = new GameView(&mainWindow);
+    
+    // 设置主窗口
+    mainWindow.setCentralWidget(gameView);
+    mainWindow.setWindowTitle("智能吞噬进化 - AI Devour Evolve");
+    mainWindow.resize(1200, 800);
+    
+    // 创建菜单栏
+    QMenuBar *menuBar = mainWindow.menuBar();
+    QMenu *gameMenu = menuBar->addMenu("游戏");
+    
+    // 添加游戏控制菜单项
+    QAction *startAction = gameMenu->addAction("开始游戏 (P)");
+    QAction *pauseAction = gameMenu->addAction("暂停游戏 (P)");
+    QAction *resetAction = gameMenu->addAction("重置游戏 (Esc)");
+    gameMenu->addSeparator();
+    QAction *exitAction = gameMenu->addAction("退出");
+    
+    // 连接菜单动作
+    QObject::connect(startAction, &QAction::triggered, gameView, &GameView::startGame);
+    QObject::connect(pauseAction, &QAction::triggered, gameView, &GameView::pauseGame);
+    QObject::connect(resetAction, &QAction::triggered, gameView, &GameView::resetGame);
+    QObject::connect(exitAction, &QAction::triggered, &app, &QApplication::quit);
+    
+    // 创建帮助菜单
+    QMenu *helpMenu = menuBar->addMenu("帮助");
+    QAction *controlsAction = helpMenu->addAction("控制说明");
+    
+    QObject::connect(controlsAction, &QAction::triggered, [&mainWindow]() {
+        QMessageBox::information(&mainWindow, "控制说明", 
+            "游戏控制:\n"
+            "WASD 或 方向键 - 移动\n"
+            "空格键 或 左键 - 分裂\n"
+            "R键 或 右键 - 喷射孢子\n"
+            "P键 - 暂停/继续游戏\n"
+            "Esc键 - 重置游戏\n"
+            "鼠标滚轮 - 缩放视野\n\n"
+            "游戏规则:\n"
+            "- 吞噬比自己小的球来成长\n"
+            "- 避免被更大的球吞噬\n"
+            "- 分裂可以增加机动性，但会减小单个球的大小\n"
+            "- 荆棘球会对玩家造成伤害并可能导致分裂\n"
+            "- 团队合作是获胜的关键"
+        );
+    });
+    
+    // 创建状态栏
+    QStatusBar *statusBar = mainWindow.statusBar();
+    QLabel *statusLabel = new QLabel();
+    statusLabel->setText("按P键开始游戏");
+    statusBar->addWidget(statusLabel);
+    
+    // 定时更新状态栏
+    QTimer *statusTimer = new QTimer(&mainWindow);
+    QObject::connect(statusTimer, &QTimer::timeout, [gameView, statusLabel]() {
+        if (gameView->isGameRunning()) {
+            CloneBall* player = gameView->getMainPlayer();
+            if (player && !player->isRemoved()) {
+                float totalScore = gameView->getTotalPlayerScore();
+                statusLabel->setText(QString("游戏进行中 - 总分数: %1 | 主球大小: %2")
+                    .arg(QString::number(totalScore, 'f', 1))
+                    .arg(QString::number(player->radius(), 'f', 1)));
+            } else {
+                statusLabel->setText("游戏进行中 - 玩家已被淘汰");
+            }
+        } else {
+            statusLabel->setText("游戏已暂停 - 按P键继续");
+        }
+    });
+    statusTimer->start(100);
+    
+    // 显示窗口
     mainWindow.show();
-
-    // 4. 进入事件循环，程序会在这里等待用户的操作（如点击、移动鼠标）
+    
+    // 自动开始游戏
+    QTimer::singleShot(500, gameView, &GameView::startGame);
+    
     return app.exec();
 }

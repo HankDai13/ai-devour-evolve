@@ -305,65 +305,536 @@ add_executable(AiDevourEvolve
 
 编译运行，你将在窗口中央看到一个蓝色的圆圈！
 
-### 步骤 3.4: 实现玩家跟随鼠标移动
+### 步骤 3.4: 实现玩家键盘控制移动
 
-我们需要让玩家细胞能响应鼠标的移动。
+我们需要让玩家细胞能响应键盘的WASD按键，以固定速度移动。
 
 **修改 `GameView.h`**:
 
 ```cpp
 // ...
-#include <QMouseEvent> // 包含鼠标事件的头文件
+#include <QKeyEvent> // 包含键盘事件的头文件
+#include <QTimer> // 包含定时器的头文件
+#include <QSet> // 包含集合的头文件
 
 class PlayerCell; // 前向声明，告诉编译器有这么一个类，避免头文件循环包含
 
 class GameView : public QGraphicsView
 {
-    // ...
+    Q_OBJECT // 宏，使用Qt信号与槽机制时必须添加
+
+public:
+    // 构造函数，QWidget *parent = nullptr 是C++的常用写法
+    GameView(QWidget *parent = nullptr);
+
 protected:
-    // 重写鼠标移动事件的处理函数
-    void mouseMoveEvent(QMouseEvent *event) override;
+    // 重写键盘事件的处理函数
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
+
+private slots:
+    void updatePlayerMovement(); // 更新玩家移动的槽函数
+
 private:
     PlayerCell *m_player; // 添加一个成员变量来持有玩家的指针
+    QTimer *m_movementTimer; // 移动更新定时器
+    QSet<int> m_pressedKeys; // 当前按下的按键集合
+    qreal m_playerSpeed; // 玩家移动速度
 };
 ```
 
 **修改 `GameView.cpp`**:
 
 ```cpp
-// ...
-GameView::GameView(QWidget *parent) : QGraphicsView(parent)
+#include "GameView.h"
+#include "PlayerCell.h" // 包含头文件
+#include <QGraphicsScene>
+#include <QKeyEvent>
+#include <QTimer>
+#include <QSet>
+
+GameView::GameView(QWidget *parent) : QGraphicsView(parent), m_player(nullptr), m_playerSpeed(5.0)
 {
-    // ...
-    // 将 player 赋值给成员变量 m_player
+    // 1. 创建一个"舞台"
+    QGraphicsScene *scene = new QGraphicsScene(this);
+    // 将舞台的范围设置为1600x1200，比我们的视野大
+    scene->setSceneRect(0, 0, 1600, 1200);
+
+    // 2. 将我们这个"摄像机"的舞台设置为刚刚创建的scene
+    this->setScene(scene);
+    
+    // 3. 一些渲染和交互优化
+    this->setRenderHint(QPainter::Antialiasing); // 开启抗锯齿，让圆形更平滑
+    this->setCacheMode(QGraphicsView::CacheBackground);
+    this->setViewportUpdateMode(QGraphicsView::BoundingRectViewportUpdate);
+    
+    // 4. 启用键盘焦点，这样才能接收键盘事件
+    this->setFocusPolicy(Qt::StrongFocus);
+    this->setFocus();
+    
+    // 5. 创建一个玩家细胞，初始半径为20，放在舞台中央
     m_player = new PlayerCell(800, 600, 20);
-    scene->addItem(m_player);
+    scene->addItem(m_player); // 将玩家添加到舞台上！
+    
+    // 6. 设置移动更新定时器，60FPS
+    m_movementTimer = new QTimer(this);
+    connect(m_movementTimer, &QTimer::timeout, this, &GameView::updatePlayerMovement);
+    m_movementTimer->start(16); // 约60FPS (1000ms / 60 ≈ 16ms)
 }
 
-void GameView::mouseMoveEvent(QMouseEvent *event)
+void GameView::keyPressEvent(QKeyEvent *event)
 {
-    if (m_player) {
-        // mapToScene可以将窗口内的坐标（像素）转换成舞台上的坐标
-        QPointF targetPos = mapToScene(event->pos());
-        m_player->setPos(targetPos); // 直接设置玩家的位置
+    // 将按下的键添加到集合中
+    m_pressedKeys.insert(event->key());
+    
+    // 调用父类的实现，保持其他默认行为
+    QGraphicsView::keyPressEvent(event);
+}
+
+void GameView::keyReleaseEvent(QKeyEvent *event)
+{
+    // 将释放的键从集合中移除
+    m_pressedKeys.remove(event->key());
+    
+    // 调用父类的实现，保持其他默认行为
+    QGraphicsView::keyReleaseEvent(event);
+}
+
+void GameView::updatePlayerMovement()
+{
+    if (!m_player) return;
+    
+    QPointF currentPos = m_player->pos();
+    QPointF newPos = currentPos;
+    
+    // 检查按下的键，更新位置
+    if (m_pressedKeys.contains(Qt::Key_W) || m_pressedKeys.contains(Qt::Key_Up)) {
+        newPos.setY(newPos.y() - m_playerSpeed); // 向上移动
+    }
+    if (m_pressedKeys.contains(Qt::Key_S) || m_pressedKeys.contains(Qt::Key_Down)) {
+        newPos.setY(newPos.y() + m_playerSpeed); // 向下移动
+    }
+    if (m_pressedKeys.contains(Qt::Key_A) || m_pressedKeys.contains(Qt::Key_Left)) {
+        newPos.setX(newPos.x() - m_playerSpeed); // 向左移动
+    }
+    if (m_pressedKeys.contains(Qt::Key_D) || m_pressedKeys.contains(Qt::Key_Right)) {
+        newPos.setX(newPos.x() + m_playerSpeed); // 向右移动
     }
     
-    // 调用父类的同名函数，确保事件能继续传递（好习惯）
-    QGraphicsView::mouseMoveEvent(event);
+    // 边界检查，确保玩家不会移出场景
+    QRectF sceneRect = scene()->sceneRect();
+    qreal radius = m_player->radius();
+    
+    if (newPos.x() - radius < sceneRect.left()) {
+        newPos.setX(sceneRect.left() + radius);
+    }
+    if (newPos.x() + radius > sceneRect.right()) {
+        newPos.setX(sceneRect.right() - radius);
+    }
+    if (newPos.y() - radius < sceneRect.top()) {
+        newPos.setY(sceneRect.top() + radius);
+    }
+    if (newPos.y() + radius > sceneRect.bottom()) {
+        newPos.setY(sceneRect.bottom() - radius);
+    }
+    
+    // 设置新位置
+    m_player->setPos(newPos);
 }
 ```
 
-编译运行，现在蓝色的圆圈会紧紧地跟随着你的鼠标指针移动了！
+编译运行，现在你可以使用WASD键或方向键来控制蓝色圆圈的移动了！移动非常流畅，并且玩家不会移出游戏边界。
 
-**第一阶段到此已经完成了一个巨大的里程碑！** 你已经掌握了Qt图形开发最核心的流程。接下来的食物生成和碰撞检测，都是在这个基础上添砖加瓦。
+**第一阶段基础部分已经完成！** 你已经掌握了Qt图形开发最核心的流程。现在让我们继续完成完整的游戏原型。
 
-## 4. 下一步：向完整原型迈进 (选做)
+## 4. 完成完整原型：食物生成和碰撞检测
 
-如果你感觉良好，可以继续尝试实现以下功能，来完成整个第一阶段的目标。
+接下来我们将实现完整的游戏机制，包括食物生成、碰撞检测和成长系统。这将让你拥有一个真正可玩的游戏原型！
 
-1. **创建FoodItem类**: 仿照PlayerCell，创建一个FoodItem类，让它是一个小小的、比如红色的圆点
-2. **随机生成食物**: 在GameView中使用QTimer，每隔一段时间（比如100毫秒），就在场景的随机位置new一个FoodItem并添加到scene中
-3. **碰撞检测与吞噬**: 在PlayerCell类中也创建一个QTimer，每隔一小段时间（比如16毫秒，约等于60FPS），就调用`this->collidingItems()`来获取所有与自己碰撞的item
-4. **实现吞噬逻辑**: 遍历碰撞的item，如果发现是FoodItem，就把它从场景中移除 (`scene()->removeItem(...)`)，并增加自己的半径`m_radius`，然后调用`update()`来重绘自己，让变大的效果显示出来
+### 步骤 4.1: 创建食物类 (FoodItem)
 
-完成这些，你的第一阶段就完美收官了。你将拥有一个功能完备、可交互的游戏核心原型，为后续的网络和AI集成打下了坚实的基础。祝你编码愉快！
+**新建文件**: `src/FoodItem.h`
+
+```cpp
+#ifndef FOODITEM_H
+#define FOODITEM_H
+
+#include <QGraphicsObject>
+#include <QRectF>
+#include <QPainter>
+#include <QStyleOptionGraphicsItem>
+
+class FoodItem : public QGraphicsObject
+{
+    Q_OBJECT
+
+public:
+    FoodItem(qreal x, qreal y, qreal radius = 8.0);
+
+    // QGraphicsItem的必须重写的函数
+    QRectF boundingRect() const override;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
+
+    // 获取食物的营养值（影响玩家成长幅度）
+    qreal nutritionValue() const { return m_nutritionValue; }
+
+private:
+    qreal m_radius;
+    qreal m_nutritionValue;
+    QColor m_color;
+};
+
+#endif // FOODITEM_H
+```
+
+**新建文件**: `src/FoodItem.cpp`
+
+```cpp
+#include "FoodItem.h"
+#include <QPainter>
+#include <QPen>
+#include <QRandomGenerator>
+
+FoodItem::FoodItem(qreal x, qreal y, qreal radius) : m_radius(radius)
+{
+    // 设置位置
+    setPos(x, y);
+    
+    // 根据大小设置营养值
+    m_nutritionValue = m_radius * 0.5;
+    
+    // 随机选择食物颜色（不同颜色代表不同营养价值）
+    QList<QColor> foodColors = {
+        QColor(255, 100, 100), // 红色
+        QColor(100, 255, 100), // 绿色
+        QColor(255, 255, 100), // 黄色
+        QColor(255, 150, 100), // 橙色
+        QColor(150, 100, 255)  // 紫色
+    };
+    
+    m_color = foodColors[QRandomGenerator::global()->bounded(foodColors.size())];
+    
+    // 设置一些标志
+    setFlag(QGraphicsItem::ItemIsSelectable, false);
+}
+
+QRectF FoodItem::boundingRect() const
+{
+    return QRectF(-m_radius, -m_radius, m_radius * 2, m_radius * 2);
+}
+
+void FoodItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget)
+{
+    Q_UNUSED(option)
+    Q_UNUSED(widget)
+    
+    // 设置抗锯齿
+    painter->setRenderHint(QPainter::Antialiasing);
+    
+    // 设置填充颜色
+    painter->setBrush(QBrush(m_color));
+    
+    // 设置边框
+    QPen pen(m_color.darker(150), 1);
+    painter->setPen(pen);
+    
+    // 绘制圆形食物
+    painter->drawEllipse(QPointF(0, 0), m_radius, m_radius);
+}
+```
+
+### 步骤 4.2: 在GameView中添加食物生成系统
+
+**修改 `GameView.h`**:
+
+```cpp
+#include <QGraphicsView>
+#include <QKeyEvent>
+#include <QTimer>
+#include <QSet>
+
+class PlayerCell;
+class FoodItem; // 新增前向声明
+
+class GameView : public QGraphicsView
+{
+    Q_OBJECT
+
+public:
+    GameView(QWidget *parent = nullptr);
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
+
+private slots:
+    void updatePlayerMovement();
+    void generateFood(); // 新增：生成食物的槽函数
+
+private:
+    PlayerCell *m_player;
+    QTimer *m_movementTimer;
+    QTimer *m_foodTimer; // 新增：食物生成定时器
+    QSet<int> m_pressedKeys;
+    qreal m_playerSpeed;
+    
+    // 新增：食物生成相关的私有函数
+    void spawnFoodAtRandomLocation();
+    QPointF getRandomFoodLocation();
+};
+```
+
+**修改 `GameView.cpp`**:
+
+```cpp
+#include "GameView.h"
+#include "PlayerCell.h"
+#include "FoodItem.h" // 新增包含
+#include <QGraphicsScene>
+#include <QKeyEvent>
+#include <QTimer>
+#include <QSet>
+#include <QRandomGenerator> // 新增包含
+
+GameView::GameView(QWidget *parent) : QGraphicsView(parent), m_player(nullptr), m_playerSpeed(5.0)
+{
+    // ... 之前的代码 ...
+    
+    // 7. 设置食物生成定时器，每500毫秒生成一个食物
+    m_foodTimer = new QTimer(this);
+    connect(m_foodTimer, &QTimer::timeout, this, &GameView::generateFood);
+    m_foodTimer->start(500); // 每500毫秒生成一个食物
+    
+    // 8. 初始生成一些食物
+    for (int i = 0; i < 10; ++i) {
+        spawnFoodAtRandomLocation();
+    }
+}
+
+// ... keyPressEvent, keyReleaseEvent, updatePlayerMovement 保持不变 ...
+
+void GameView::generateFood()
+{
+    // 检查场景中食物数量，如果少于15个就生成新的
+    QList<QGraphicsItem*> items = scene()->items();
+    int foodCount = 0;
+    for (QGraphicsItem* item : items) {
+        if (qgraphicsitem_cast<FoodItem*>(item)) {
+            foodCount++;
+        }
+    }
+    
+    if (foodCount < 15) {
+        spawnFoodAtRandomLocation();
+    }
+}
+
+void GameView::spawnFoodAtRandomLocation()
+{
+    QPointF pos = getRandomFoodLocation();
+    
+    // 随机生成不同大小的食物
+    qreal radius = 5.0 + QRandomGenerator::global()->bounded(8.0); // 5-13像素的随机半径
+    
+    FoodItem *food = new FoodItem(pos.x(), pos.y(), radius);
+    scene()->addItem(food);
+}
+
+QPointF GameView::getRandomFoodLocation()
+{
+    QRectF sceneRect = scene()->sceneRect();
+    
+    qreal x = sceneRect.left() + QRandomGenerator::global()->bounded(int(sceneRect.width()));
+    qreal y = sceneRect.top() + QRandomGenerator::global()->bounded(int(sceneRect.height()));
+    
+    return QPointF(x, y);
+}
+```
+
+### 步骤 4.3: 实现碰撞检测和吞噬机制
+
+**修改 `PlayerCell.h`**:
+
+```cpp
+#ifndef PLAYERCELL_H
+#define PLAYERCELL_H
+
+#include <QGraphicsObject>
+#include <QRectF>
+#include <QPainter>
+#include <QStyleOptionGraphicsItem>
+#include <QTimer> // 新增
+
+class PlayerCell : public QGraphicsObject
+{
+    Q_OBJECT
+
+public:
+    PlayerCell(qreal x, qreal y, qreal radius);
+    
+    QRectF boundingRect() const override;
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
+
+    qreal radius() const { return m_radius; }
+    void setRadius(qreal radius);
+    
+    // 新增：获取玩家得分
+    int score() const { return m_score; }
+
+private slots:
+    void checkCollisions(); // 新增：检查碰撞的槽函数
+
+private:
+    qreal m_radius;
+    QTimer *m_collisionTimer; // 新增：碰撞检测定时器
+    int m_score; // 新增：玩家得分
+    
+    void eatFood(class FoodItem* food); // 新增：吞噬食物的函数
+};
+
+#endif // PLAYERCELL_H
+```
+
+**修改 `PlayerCell.cpp`**:
+
+```cpp
+#include "PlayerCell.h"
+#include "FoodItem.h" // 新增包含
+#include <QPainter>
+#include <QPen>
+#include <QGraphicsScene>
+#include <QTimer>
+
+PlayerCell::PlayerCell(qreal x, qreal y, qreal radius) : m_radius(radius), m_score(0)
+{
+    setPos(x, y);
+    setFlag(QGraphicsItem::ItemIsMovable, false);
+    setFlag(QGraphicsItem::ItemIsSelectable, false);
+    
+    // 新增：设置碰撞检测定时器
+    m_collisionTimer = new QTimer(this);
+    connect(m_collisionTimer, &QTimer::timeout, this, &PlayerCell::checkCollisions);
+    m_collisionTimer->start(16); // 60FPS检测碰撞
+}
+
+// boundingRect() 和 paint() 保持不变...
+
+void PlayerCell::setRadius(qreal radius)
+{
+    if (radius != m_radius) {
+        prepareGeometryChange();
+        m_radius = radius;
+        update();
+    }
+}
+
+void PlayerCell::checkCollisions()
+{
+    // 获取所有与玩家碰撞的物品
+    QList<QGraphicsItem*> collidingItems = this->collidingItems();
+    
+    for (QGraphicsItem* item : collidingItems) {
+        // 检查是否是食物
+        FoodItem* food = qgraphicsitem_cast<FoodItem*>(item);
+        if (food) {
+            eatFood(food);
+        }
+    }
+}
+
+void PlayerCell::eatFood(FoodItem* food)
+{
+    if (!food || !scene()) return;
+    
+    // 增加得分
+    m_score += static_cast<int>(food->nutritionValue() * 10);
+    
+    // 增加半径（成长效果）
+    qreal growthAmount = food->nutritionValue() * 0.3;
+    setRadius(m_radius + growthAmount);
+    
+    // 从场景中移除食物
+    scene()->removeItem(food);
+    delete food;
+    
+    // 在控制台输出得分（后续可以用UI显示）
+    qDebug() << "Score:" << m_score << "Radius:" << m_radius;
+}
+```
+
+### 步骤 4.4: 更新CMakeLists.txt
+
+```cmake
+# 更新源文件列表
+set(SOURCES
+    src/main.cpp
+    src/DemoQtVS.cpp
+    src/GameView.cpp
+    src/PlayerCell.cpp
+    src/FoodItem.cpp    # 新增
+    # 未来添加更多源文件时在这里列出
+)
+
+set(HEADERS
+    src/DemoQtVS.h
+    src/GameView.h
+    src/PlayerCell.h
+    src/FoodItem.h      # 新增
+    # 未来添加更多头文件时在这里列出
+)
+```
+
+### 步骤 4.6: 编译运行完整原型
+
+**更新CMakeLists.txt**:
+
+确保你的CMakeLists.txt包含所有新文件：
+
+```cmake
+# 明确指定源文件
+set(SOURCES
+    src/main.cpp
+    src/DemoQtVS.cpp
+    src/GameView.cpp
+    src/PlayerCell.cpp
+    src/FoodItem.cpp    # 新增
+)
+
+set(HEADERS
+    src/DemoQtVS.h
+    src/GameView.h
+    src/PlayerCell.h
+    src/FoodItem.h      # 新增
+)
+```
+
+现在编译运行项目，你将体验到：
+
+1. **键盘控制**: 使用WASD或方向键控制蓝色玩家细胞移动
+2. **食物生成**: 场景中会随机生成彩色的食物点
+3. **吞噬成长**: 碰撞食物后玩家细胞会变大，并获得得分
+4. **边界限制**: 玩家无法移出游戏区域
+5. **动态食物**: 食物会持续生成，保持游戏的趣味性
+
+**🎉 恭喜！你现在拥有了一个功能完整的游戏原型！**
+
+这个原型包含了现代游戏的核心要素：
+- 流畅的玩家控制
+- 动态的游戏对象生成
+- 碰撞检测和游戏逻辑
+- 成长机制和得分系统
+- 良好的视觉反馈
+
+**Phase 1 完整原型开发完成！** 你已经成功实现了一个可玩的细胞吞噬游戏原型。
+
+### 步骤 4.6: 可选的增强功能
+
+如果你还想继续完善，可以尝试：
+
+1. **添加UI界面**: 显示当前得分和玩家大小
+2. **添加音效**: 吞噬食物时播放音效
+3. **添加特殊食物**: 不同类型的食物有不同效果
+4. **添加敌对细胞**: AI控制的竞争对手
+5. **保存最高分**: 将最佳成绩保存到文件
+
+**你的第一阶段开发完美收官！** 为后续的网络多人和AI集成奠定了坚实的基础。
