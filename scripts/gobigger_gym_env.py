@@ -16,7 +16,20 @@ os.environ["PATH"] = f"{str(build_dir)};{os.environ['PATH']}"
 
 import gobigger_env
 
-class GoBiggerEnv:
+try:
+    import gymnasium as gym
+    from gymnasium import spaces
+    GYMNASIUM_AVAILABLE = True
+except ImportError:
+    try:
+        import gym
+        from gym import spaces
+        GYMNASIUM_AVAILABLE = False
+    except ImportError:
+        print("❌ 需要安装 gymnasium 或 gym")
+        raise
+
+class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
     """
     GoBigger环境的Gymnasium风格包装器
     提供标准的reset()、step()、render()接口
@@ -24,10 +37,26 @@ class GoBiggerEnv:
     
     def __init__(self, config=None):
         """初始化环境"""
+        super().__init__()
+        
         self.engine = gobigger_env.GameEngine()
         self.config = config or {}
         
-        # 动作空间定义
+        # 定义动作空间和观察空间
+        self.action_space = spaces.Box(
+            low=np.array([-1.0, -1.0, 0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 2], dtype=np.float32),
+            dtype=np.float32
+        )
+        
+        self.observation_space = spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(400,),
+            dtype=np.float32
+        )
+        
+        # 动作空间定义（兼容性保留）
         self.action_space_low = np.array([-1.0, -1.0, 0], dtype=np.float32)
         self.action_space_high = np.array([1.0, 1.0, 2], dtype=np.float32)
         
