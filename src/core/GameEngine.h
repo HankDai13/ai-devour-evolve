@@ -30,18 +30,21 @@ struct Action {
 };
 
 struct GlobalState {
-    QVector<int> border;           // [map_width, map_height]
+    QVector<int> border;           // [map_width, map_height] 
     int total_frame = 0;
     int last_frame_count = 0;
     QMap<int, float> leaderboard;  // 队伍ID -> 分数
 };
 
 struct PlayerState {
-    QVector<float> rectangle;      // [x_min, y_min, x_max, y_max]
-    QVector<QVector<float>> food;  // 每个食物: [x, y, radius, score]
-    QVector<QVector<float>> thorns; // 每个荆棘: [x, y, radius, score, vx, vy]
-    QVector<QVector<float>> spore;  // 每个孢子: [x, y, radius, score, vx, vy]
-    QVector<QVector<float>> clone;  // 每个克隆球: [x, y, radius, score, vx, vy, dir_x, dir_y, team_id, player_id]
+    QVector<float> rectangle;      // [x_min, y_min, x_max, y_max] - 玩家视野矩形
+    
+    // overlap结构：视野内的对象，每种类型的数量都有固定限制
+    QVector<QVector<float>> food;  // 最多50个，每个: [x, y, radius, score]
+    QVector<QVector<float>> thorns; // 最多20个，每个: [x, y, radius, score, vx, vy]
+    QVector<QVector<float>> spore;  // 最多10个，每个: [x, y, radius, score, vx, vy]
+    QVector<QVector<float>> clone;  // 最多30个，每个: [x, y, radius, score, vx, vy, dir_x, dir_y, team_id, player_id]
+    
     float score = 0.0f;
     bool can_eject = false;
     bool can_split = false;
@@ -164,6 +167,7 @@ private:
     
     // 数据预处理
     QVector<QVector<float>> preprocessObjects(const QVector<QVector<float>>& objects, int maxCount) const;
+    QVector<QVector<float>> sortObjectsByDistance(const QVector<QVector<float>>& objects, const QPointF& playerCenter) const;
 };
 
 #endif // GAMEENGINE_H

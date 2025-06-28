@@ -81,6 +81,15 @@ PYBIND11_MODULE(gobigger_env, m) {
         return Action(dx, dy, type);
     }, "Create an action", py::arg("direction_x"), py::arg("direction_y"), py::arg("action_type"));
     
+    // 添加一个辅助函数来显示动作限制
+    m.def("clamp_action", [](const Action& action) {
+        Action clampedAction;
+        clampedAction.direction_x = std::max(-1.0f, std::min(1.0f, action.direction_x));
+        clampedAction.direction_y = std::max(-1.0f, std::min(1.0f, action.direction_y));
+        clampedAction.action_type = std::max(0, std::min(2, action.action_type));
+        return clampedAction;
+    }, "Clamp action to valid range", py::arg("action"));
+    
     // 版本信息
     m.attr("__version__") = "1.0.0";
     m.attr("__author__") = "AI Devour Evolve Team";

@@ -653,16 +653,19 @@ PlayerState GameEngine::getPlayerState(int playerId) const
                       static_cast<float>(viewRect.right()), static_cast<float>(viewRect.bottom())};
     
     // 获取视野内的对象
-    state.food = getObjectsInView(viewRect, BaseBallData::FOOD_BALL);
-    state.thorns = getObjectsInView(viewRect, BaseBallData::THORNS_BALL);
-    state.spore = getObjectsInView(viewRect, BaseBallData::SPORE_BALL);
-    state.clone = getObjectsInView(viewRect, BaseBallData::CLONE_BALL);
+    QVector<QVector<float>> rawFood = getObjectsInView(viewRect, BaseBallData::FOOD_BALL);
+    QVector<QVector<float>> rawThorns = getObjectsInView(viewRect, BaseBallData::THORNS_BALL);
+    QVector<QVector<float>> rawSpore = getObjectsInView(viewRect, BaseBallData::SPORE_BALL);
+    QVector<QVector<float>> rawClone = getObjectsInView(viewRect, BaseBallData::CLONE_BALL);
     
-    // 数据预处理：限制数量并填充/裁剪
-    state.food = preprocessObjects(state.food, 50);
-    state.thorns = preprocessObjects(state.thorns, 20);
-    state.spore = preprocessObjects(state.spore, 10);
-    state.clone = preprocessObjects(state.clone, 30);
+    // 计算玩家中心位置用于距离排序
+    QPointF playerCenter = viewRect.center();
+    
+    // 按距离排序后再预处理
+    state.food = preprocessObjects(sortObjectsByDistance(rawFood, playerCenter), 50);
+    state.thorns = preprocessObjects(sortObjectsByDistance(rawThorns, playerCenter), 20);
+    state.spore = preprocessObjects(sortObjectsByDistance(rawSpore, playerCenter), 10);
+    state.clone = preprocessObjects(sortObjectsByDistance(rawClone, playerCenter), 30);
     
     // 计算玩家总分数和能力
     float totalScore = getTotalPlayerScore(0, playerId); // 假设team 0
@@ -694,11 +697,17 @@ QVector<QVector<float>> GameEngine::getObjectsInView(const QRectF& viewRect, Bas
         
         QVector<float> objData;
         
-        // 归一化位置
-        float x = pos.x() / (m_config.gameBorder.maxx - m_config.gameBorder.minx);
-        float y = pos.y() / (m_config.gameBorder.maxy - m_config.gameBorder.miny);
-        float radius = ball->radius() / 100.0f; // 归一化半径
-        float score = ball->score() / 1000.0f;  // 归一化分数
+        // 获取地图尺寸用于归一化
+        float mapWidth = m_config.gameBorder.maxx - m_config.gameBorder.minx;
+        float mapHeight = m_config.gameBorder.maxy - m_config.gameBorder.miny;
+        
+        // 归一化位置 (相对于地图中心，范围[-1,1])
+        float x = (pos.x() - (m_config.gameBorder.minx + m_config.gameBorder.maxx) / 2.0f) / (mapWidth / 2.0f);
+        float y = (pos.y() - (m_config.gameBorder.miny + m_config.gameBorder.maxy) / 2.0f) / (mapHeight / 2.0f);
+        
+        // 归一化半径和分数
+        float radius = ball->radius() / 100.0f; // 假设最大半径为100
+        float score = ball->score() / 1000.0f;  // 假设分数范围为0-1000
         
         switch (type) {
             case BaseBallData::FOOD_BALL:
@@ -782,23 +791,54 @@ QVector<QVector<float>> GameEngine::preprocessObjects(const QVector<QVector<floa
 {
     QVector<QVector<float>> result = objects;
     
-    // 如果超出数量限制，按距离排序并裁剪
+    // 如果超出数量限制，按距离排序并裁剪（距离玩家中心）
     if (result.size() > maxCount) {
-        // TODO: 实现按距离排序裁剪
+        // TODO: 实现更精确的距离排序
+        // 目前简单截取前maxCount个
         result = result.mid(0, maxCount);
+    }
+    
+    // 确定特征向量的维度
+    int featureCount = 4; // 默认维度
+    if (!objects.isEmpty()) {
+        featureCount = objects.first().size();
     }
     
     // 如果不足数量，用0填充
     while (result.size() < maxCount) {
-        QVector<float> zeros;
-        if (!objects.isEmpty()) {
-            int featureCount = objects.first().size();
-            zeros.fill(0.0f, featureCount);
-        } else {
-            zeros.fill(0.0f, 4); // 默认4个特征
-        }
+        QVector<float> zeros(featureCount, 0.0f);
         result.append(zeros);
     }
     
     return result;
+}
+
+QVector<QVector<float>> GameEngine::sortObjectsByDistance(const QVector<QVector<float>>& objects, const QPointF& playerCenter) const
+{
+    QVector<QPair<float, QVector<float>>> objectsWithDistance;
+    
+    // 计算每个对象到玩家中心的距离
+    for (const QVector<float>& obj : objects) {
+        if (obj.size() >= 2) {
+            // 假设前两个元素是x,y坐标（已归一化）
+            float dx = obj[0] * (m_config.gameBorder.maxx - m_config.gameBorder.minx) / 2.0f - playerCenter.x();
+            float dy = obj[1] * (m_config.gameBorder.maxy - m_config.gameBorder.miny) / 2.0f - playerCenter.y();
+            float distance = sqrt(dx * dx + dy * dy);
+            objectsWithDistance.append({distance, obj});
+        }
+    }
+    
+    // 按距离排序（从近到远）
+    std::sort(objectsWithDistance.begin(), objectsWithDistance.end(),
+              [](const QPair<float, QVector<float>>& a, const QPair<float, QVector<float>>& b) {
+                  return a.first < b.first;
+              });
+    
+    // 提取排序后的对象
+    QVector<QVector<float>> sortedObjects;
+    for (const auto& pair : objectsWithDistance) {
+        sortedObjects.append(pair.second);
+    }
+    
+    return sortedObjects;
 }
