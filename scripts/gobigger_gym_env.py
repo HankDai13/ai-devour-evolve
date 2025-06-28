@@ -8,23 +8,47 @@ import os
 from pathlib import Path
 import numpy as np
 
-# 路径设置：定位到项目根目录
+# 智能路径搜索：寻找有效的构建目录
 root_dir = Path(__file__).parent.parent
-build_dir = root_dir / "build" / "Release"
-sys.path.insert(0, str(build_dir))
-os.environ["PATH"] = f"{str(build_dir)};{os.environ['PATH']}"
+build_dir_candidates = [
+    root_dir / "build" / "Release",
+    root_dir / "build" / "Debug", 
+    root_dir / "build",
+    root_dir / "build-msvc" / "Release",
+    root_dir / "build-msvc" / "Debug",
+]
 
-import gobigger_env
+build_dir_found = None
+for build_dir in build_dir_candidates:
+    if build_dir.exists() and any(build_dir.iterdir()):
+        sys.path.insert(0, str(build_dir))
+        os.environ["PATH"] = f"{str(build_dir)};{os.environ['PATH']}"
+        build_dir_found = build_dir
+        print(f"✅ 找到构建目录: {build_dir}")
+        break
+
+if not build_dir_found:
+    raise ImportError("❌ 未找到有效的构建目录。请确保项目已编译。")
+
+try:
+    import gobigger_env
+    print("✅ 成功导入 gobigger_env 模块")
+except ImportError as e:
+    print(f"❌ 导入 gobigger_env 失败: {e}")
+    print(f"搜索路径: {build_dir_found}")
+    raise
 
 try:
     import gymnasium as gym
     from gymnasium import spaces
     GYMNASIUM_AVAILABLE = True
+    print("✅ 使用 gymnasium 库")
 except ImportError:
     try:
         import gym
         from gym import spaces
         GYMNASIUM_AVAILABLE = False
+        print("✅ 使用 gym 库")
     except ImportError:
         print("❌ 需要安装 gymnasium 或 gym")
         raise
@@ -49,10 +73,12 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
             dtype=np.float32
         )
         
+        # 观察空间大小需要与特征提取保持一致
+        self.observation_space_shape = (400,)
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
-            shape=(400,),
+            shape=self.observation_space_shape,
             dtype=np.float32
         )
         
@@ -63,26 +89,53 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         # 环境状态
         self.current_obs = None
         self.episode_step = 0
-        self.max_episode_steps = self.config.get('max_episode_steps', 1000)
+        self.max_episode_steps = self.config.get('max_episode_steps', 2000)  # 增加默认步数
         
-    def reset(self, seed=None):
+        # 奖励函数优化：追踪分数变化
+        self.last_score = 0.0
+        self.prev_observation = None
+        
+    def reset(self, seed=None, options=None):
         """重置环境"""
+        if seed is not None:
+            # 设置随机种子（如果引擎支持）
+            np.random.seed(seed)
+        
         self.episode_step = 0
         self.current_obs = self.engine.reset()
-        return self._extract_features(), {}
+        
+        # 初始化奖励函数状态
+        if self.current_obs and self.current_obs.player_states:
+            ps = list(self.current_obs.player_states.values())[0]
+            self.last_score = ps.score
+        else:
+            self.last_score = 0.0
+        
+        self.prev_observation = self.current_obs
+        
+        # 兼容不同版本的gym
+        if GYMNASIUM_AVAILABLE:
+            return self._extract_features(), {}
+        else:
+            return self._extract_features()
     
     def step(self, action):
         """执行一步动作"""
-        # 确保动作格式正确
+        # 确保动作格式正确并进行裁剪
         if isinstance(action, (list, tuple, np.ndarray)):
             if len(action) >= 3:
-                cpp_action = gobigger_env.Action(float(action[0]), float(action[1]), int(action[2]))
+                # 裁剪动作到有效范围
+                move_x = float(np.clip(action[0], -1.0, 1.0))
+                move_y = float(np.clip(action[1], -1.0, 1.0))
+                action_type = int(np.round(np.clip(action[2], 0, 2)))
+                cpp_action = gobigger_env.Action(move_x, move_y, action_type)
             else:
                 cpp_action = gobigger_env.Action(0.0, 0.0, 0)
         else:
             cpp_action = action
         
         # 执行动作
+        self.prev_observation = self.current_obs
         self.current_obs = self.engine.step(cpp_action)
         self.episode_step += 1
         
@@ -91,47 +144,86 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         terminated = self.engine.is_done()
         truncated = self.episode_step >= self.max_episode_steps
         
-        return self._extract_features(), reward, terminated, truncated, {}
+        # 兼容不同版本的gym
+        if GYMNASIUM_AVAILABLE:
+            return self._extract_features(), reward, terminated, truncated, {}
+        else:
+            return self._extract_features(), reward, terminated or truncated, {}
     
     def _extract_features(self):
-        """从C++观察中提取特征向量"""
-        if not self.current_obs or len(self.current_obs.player_states) == 0:
-            return np.zeros(400, dtype=np.float32)  # 默认特征大小
+        """从C++观察中提取特征向量（优化版）"""
+        if not self.current_obs or not self.current_obs.player_states:
+            return np.zeros(self.observation_space_shape, dtype=np.float32)
         
         # 获取第一个玩家的状态
         ps = list(self.current_obs.player_states.values())[0]
         
         features = []
         
-        # 全局特征 (10维)
+        # 全局特征 (10维) - 改进归一化
         gs = self.current_obs.global_state
         features.extend([
-            gs.total_frame / 1000.0,  # 归一化帧数
-            len(gs.leaderboard),      # 队伍数量
-            ps.score / 10000.0,       # 归一化分数
-            float(ps.can_eject),      # 能否吐球
-            float(ps.can_split),      # 能否分裂
+            gs.total_frame / self.max_episode_steps,  # 归一化帧数
+            len(gs.leaderboard) / 10.0,               # 归一化队伍数量
+            ps.score / 10000.0,                       # 归一化分数
+            float(ps.can_eject),                      # 能否吐球
+            float(ps.can_split),                      # 能否分裂
         ])
         features.extend([0.0] * 5)  # 预留5个全局特征
         
-        # 视野矩形 (4维)
-        features.extend(ps.rectangle)
+        # 视野矩形 (4维) - 改进归一化
+        features.extend([coord / 2000.0 for coord in ps.rectangle])
         
-        # 扁平化对象特征
+        # 扁平化对象特征 - 改进归一化和数据处理
         # 食物: 50个 × 4维 = 200维
+        food_count = 0
         for food in ps.food:
-            features.extend(food)
+            if food_count >= 50:
+                break
+            # 归一化坐标和半径
+            features.extend([
+                food[0] / 2000.0,   # x坐标归一化
+                food[1] / 2000.0,   # y坐标归一化  
+                food[2] / 10.0,     # 半径归一化
+                2.0                 # 类型标识
+            ])
+            food_count += 1
+        # 填充剩余的食物槽位
+        features.extend([0.0] * ((50 - food_count) * 4))
         
-        # 荆棘: 20个 × 6维 = 120维  
+        # 荆棘: 20个 × 4维 = 80维
+        thorns_count = 0
         for thorns in ps.thorns:
-            features.extend(thorns)
+            if thorns_count >= 20:
+                break
+            features.extend([
+                thorns[0] / 2000.0,  # x坐标归一化
+                thorns[1] / 2000.0,  # y坐标归一化
+                thorns[2] / 100.0,   # 半径归一化
+                3.0                  # 类型标识
+            ])
+            thorns_count += 1
+        # 填充剩余的荆棘槽位
+        features.extend([0.0] * ((20 - thorns_count) * 4))
         
-        # 孢子: 10个 × 6维 = 60维
+        # 孢子: 10个 × 4维 = 40维
+        spore_count = 0
         for spore in ps.spore:
-            features.extend(spore)
+            if spore_count >= 10:
+                break
+            features.extend([
+                spore[0] / 2000.0,   # x坐标归一化
+                spore[1] / 2000.0,   # y坐标归一化
+                spore[2] / 20.0,     # 半径归一化
+                4.0                  # 类型标识
+            ])
+            spore_count += 1
+        # 填充剩余的孢子槽位
+        features.extend([0.0] * ((10 - spore_count) * 4))
         
         # 截断或填充到固定长度
-        target_length = 400  # 10 + 4 + 200 + 120 + 60 + 预留
+        # 总计: 10 + 4 + 200 + 80 + 40 = 334维，填充到400维
+        target_length = self.observation_space_shape[0]
         if len(features) > target_length:
             features = features[:target_length]
         elif len(features) < target_length:
@@ -140,60 +232,131 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         return np.array(features, dtype=np.float32)
     
     def _calculate_reward(self):
-        """计算奖励"""
-        if not self.current_obs or len(self.current_obs.player_states) == 0:
-            return 0.0
+        """
+        计算奖励（优化版）
+        核心思想：奖励分数增量而非绝对分数，避免奖励稀疏性问题
+        """
+        if not self.current_obs or not self.current_obs.player_states:
+            return -5.0  # 无效状态惩罚
         
         ps = list(self.current_obs.player_states.values())[0]
         
-        # 基于分数的奖励
-        score_reward = ps.score / 1000.0
+        # 1. 分数增量奖励（主要奖励来源）
+        #    鼓励智能体通过吃食物/其他玩家来获得分数
+        score_delta = ps.score - self.last_score
+        score_reward = score_delta / 100.0  # 缩放系数，避免奖励过大
         
-        # 生存奖励
-        survival_reward = 1.0 if not self.engine.is_done() else 0.0
+        # 2. 时间惩罚（鼓励快速决策）
+        #    避免智能体无目的地游荡
+        time_penalty = -0.001
         
-        return score_reward * 0.1 + survival_reward * 0.01
+        # 3. 死亡惩罚（关键惩罚）
+        #    如果智能体死亡，给予大的负奖励
+        death_penalty = 0.0
+        if self.engine.is_done():
+            death_penalty = -10.0
+        
+        # 4. 生存奖励（小幅正奖励）
+        #    鼓励智能体保持存活
+        survival_reward = 0.01 if not self.engine.is_done() else 0.0
+        
+        # 5. 尺寸奖励（可选）
+        #    基于玩家细胞数量或其他指标的奖励
+        size_reward = 0.0
+        if self.prev_observation and self.prev_observation.player_states:
+            prev_ps = list(self.prev_observation.player_states.values())[0]
+            # 基于clone列表长度的奖励（细胞数量变化）
+            if hasattr(ps, 'clone') and hasattr(prev_ps, 'clone'):
+                current_cells = len(ps.clone) if isinstance(ps.clone, list) else 1
+                prev_cells = len(prev_ps.clone) if isinstance(prev_ps.clone, list) else 1
+                cell_delta = current_cells - prev_cells
+                size_reward = cell_delta * 0.1
+        
+        # 总奖励计算
+        total_reward = (score_reward + time_penalty + death_penalty + 
+                       survival_reward + size_reward)
+        
+        # 更新上一帧分数
+        self.last_score = ps.score
+        
+        return total_reward
     
     def render(self, mode='human'):
         """渲染环境（可选实现）"""
         if mode == 'human':
             print(f"Frame: {self.current_obs.global_state.total_frame if self.current_obs else 0}")
-            if self.current_obs and len(self.current_obs.player_states) > 0:
+            if self.current_obs and self.current_obs.player_states:
                 ps = list(self.current_obs.player_states.values())[0]
-                print(f"Score: {ps.score}, Can eject: {ps.can_eject}, Can split: {ps.can_split}")
+                score_delta = ps.score - self.last_score
+                print(f"Score: {ps.score:.2f} (Δ{score_delta:+.2f}), "
+                      f"Can eject: {ps.can_eject}, Can split: {ps.can_split}")
     
     def close(self):
         """清理资源"""
+        print("🔚 环境关闭")
         pass
 
 def demo_gymnasium_usage():
-    """演示标准Gymnasium使用方式"""
-    print("🎮 GoBigger Gymnasium环境演示")
+    """演示标准Gymnasium使用方式（优化版）"""
+    print("\n" + "="*50)
+    print("🎮 GoBigger Gymnasium 环境演示 (优化版)")
+    print("="*50 + "\n")
     
     # 创建环境
     env = GoBiggerEnv({'max_episode_steps': 100})
     
+    # 检查环境（如果安装了stable-baselines3）
+    try:
+        from stable_baselines3.common.env_checker import check_env
+        print("🔍 使用 stable-baselines3 检查环境...")
+        check_env(env)
+        print("✅ 环境检查通过！\n")
+    except ImportError:
+        print("⚠️ 未安装 stable-baselines3，跳过环境检查\n")
+    
     # 重置环境
-    obs, info = env.reset()
-    print(f"✅ 环境重置，观察维度: {obs.shape}")
+    if GYMNASIUM_AVAILABLE:
+        obs, info = env.reset()
+    else:
+        obs = env.reset()
+        info = {}
+    
+    print(f"🏁 环境重置完成")
+    print(f"   观察空间: {env.observation_space}")
+    print(f"   动作空间: {env.action_space}")
+    print(f"   观察维度: {obs.shape}")
+    print(f"   观察前10个值: {obs[:10]}")
+    print()
     
     # 运行几步
     total_reward = 0
     for step in range(10):
         # 随机动作
-        action = np.random.uniform(env.action_space_low, env.action_space_high)
-        action[2] = int(action[2])  # 动作类型为整数
+        action = env.action_space.sample()
         
-        obs, reward, terminated, truncated, info = env.step(action)
+        if GYMNASIUM_AVAILABLE:
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+        else:
+            obs, reward, done, info = env.step(action)
+            terminated, truncated = done, False
+        
         total_reward += reward
         
-        print(f"步骤 {step+1}: action={action}, reward={reward:.4f}, done={terminated or truncated}")
+        print(f"步骤 {step+1:02d}: "
+              f"动作=[{action[0]:.2f}, {action[1]:.2f}, {int(np.round(action[2]))}], "
+              f"奖励={reward:.4f}, "
+              f"累计奖励={total_reward:.4f}, "
+              f"结束={done}")
         
-        if terminated or truncated:
-            print("🏁 回合结束")
+        if done:
+            print(f"\n🏁 回合结束 (第{step+1}步)")
             break
     
-    print(f"✅ 总奖励: {total_reward:.4f}")
+    print(f"\n✅ 演示完成！")
+    print(f"   最终累计奖励: {total_reward:.4f}")
+    print(f"   平均步骤奖励: {total_reward/(step+1):.4f}")
+    
     env.close()
 
 if __name__ == "__main__":
