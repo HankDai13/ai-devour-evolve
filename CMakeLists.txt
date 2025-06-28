@@ -37,9 +37,16 @@ endif()
 
 find_package(Torch REQUIRED)
 
-# 如果启用Python绑定，查找pybind11
+# 如果启用Python绑定，获取pybind11和pybind11_qt
 if(ENABLE_PYTHON_BINDING)
-    find_package(pybind11 REQUIRED)
+    # 使用FetchContent获取pybind11
+    include(FetchContent)
+    FetchContent_Declare(
+        pybind11
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG v2.11.1  # 使用稳定版本
+    )
+    FetchContent_MakeAvailable(pybind11)
 endif()
 
 # 过滤掉MSVC特定的编译标志（MinGW兼容性）
@@ -84,8 +91,8 @@ set(CORE_HEADERS
     src/core/data/ThornsBallData.h
 )
 
-# 创建核心逻辑共享库
-add_library(gobigger_core SHARED
+# 创建核心逻辑静态库（避免Windows DLL导出问题）
+add_library(gobigger_core STATIC
     ${CORE_SOURCES}
     ${CORE_HEADERS}
 )

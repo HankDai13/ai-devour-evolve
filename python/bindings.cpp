@@ -1,6 +1,10 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
+
+// 包含我们自己的Qt类型转换器
+#include "pybind11_qt_casters.h"
+
 #include "../src/core/GameEngine.h"
 #include "../src/core/data/BaseBallData.h"
 

@@ -87,6 +87,7 @@ public:
     Observation reset();
     Observation step(const Action& action);
     bool isDone() const;
+    Observation getObservation() const; // 移到public
     
     // 游戏管理接口
     void startGame();
@@ -157,7 +158,6 @@ private:
     QVector<CloneBallData*> getPlayerBalls(int teamId, int playerId) const;
     
     // AI接口实现
-    Observation getObservation() const;
     PlayerState getPlayerState(int playerId) const;
     QVector<QVector<float>> getObjectsInView(const QRectF& viewRect, BaseBallData::BallType type) const;
     QRectF calculatePlayerViewRect(int playerId) const;

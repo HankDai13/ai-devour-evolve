@@ -9,5 +9,13 @@
     ],
     "cmake.configureSettings": {
         "CMAKE_PREFIX_PATH": "D:/qt/6.9.1/msvc2022_64;D:/tools/libtorch-cpu/libtorch"
+    },
+    "files.associations": {
+        "tuple": "cpp",
+        "bitset": "cpp",
+        "future": "cpp",
+        "memory": "cpp",
+        "optional": "cpp",
+        "random": "cpp"
     }
 }
