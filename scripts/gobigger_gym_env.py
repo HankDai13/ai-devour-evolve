@@ -5,6 +5,7 @@ GoBigger Gymnasium Environment Wrapper
 """
 import sys
 import os
+import time
 from pathlib import Path
 import numpy as np
 
@@ -104,6 +105,7 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
             np.random.seed(seed)
         
         self.episode_step = 0
+        self.episode_reward = 0.0  # 重置episode累积奖励
         self.current_obs = self.engine.reset()
         
         # 初始化奖励函数状态
@@ -114,9 +116,14 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         else:
             self.last_score = 0.0
             self.initial_score = 0.0
-        
+
         self.final_score = 0.0  # 重置最终分数
         self.prev_observation = self.current_obs
+        
+        # 重置增强奖励计算器（如果启用）
+        if hasattr(self, 'enhanced_reward_calculator'):
+            self.enhanced_reward_calculator.reset()
+            self.reward_components_history = []
         
         # 兼容不同版本的gym
         if GYMNASIUM_AVAILABLE:
@@ -144,13 +151,18 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         self.current_obs = self.engine.step(cpp_action)
         self.episode_step += 1
         
-        # 计算奖励和终止条件
-        reward = self._calculate_reward()
+        # 计算奖励和终止条件（传递原始action用于增强奖励计算）
+        reward = self._calculate_reward(action)
         terminated = self.engine.is_done()
         truncated = self.episode_step >= self.max_episode_steps
         
         # 准备info字典
         info = {}
+        
+        # 累积episode总奖励（用于Monitor统计）
+        if not hasattr(self, 'episode_reward'):
+            self.episode_reward = 0.0
+        self.episode_reward += reward
         
         # 如果episode结束，记录最终分数
         if terminated or truncated:
@@ -160,6 +172,14 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
             else:
                 self.final_score = self.last_score
             
+            # Monitor期望的标准键
+            info['episode'] = {
+                'r': self.episode_reward,                     # episode总奖励（累积的step奖励）
+                'l': self.episode_step,                       # episode长度
+                't': time.time()                              # 时间戳
+            }
+            
+            # 额外的统计信息
             info['final_score'] = self.final_score
             info['score_delta'] = self.final_score - self.initial_score
             info['episode_length'] = self.episode_step
@@ -251,37 +271,45 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         
         return np.array(features, dtype=np.float32)
     
-    def _calculate_reward(self):
+    def _calculate_reward(self, action=None):
         """
-        计算奖励（优化版）
+        计算奖励（增强版本）
+        支持两种模式：简单模式（原版）和增强模式
+        """
+        # 选择奖励计算模式
+        use_enhanced_reward = self.config.get('use_enhanced_reward', False)
+        
+        if use_enhanced_reward and hasattr(self, 'enhanced_reward_calculator'):
+            return self._calculate_enhanced_reward(action)
+        else:
+            return self._calculate_simple_reward()
+    
+    def _calculate_simple_reward(self):
+        """
+        计算简单奖励（原版逻辑）
         核心思想：奖励分数增量而非绝对分数，避免奖励稀疏性问题
         """
         if not self.current_obs or not self.current_obs.player_states:
             return -5.0  # 无效状态惩罚
-        
+
         ps = list(self.current_obs.player_states.values())[0]
         
         # 1. 分数增量奖励（主要奖励来源）
-        #    鼓励智能体通过吃食物/其他玩家来获得分数
         score_delta = ps.score - self.last_score
         score_reward = score_delta / 100.0  # 缩放系数，避免奖励过大
         
         # 2. 时间惩罚（鼓励快速决策）
-        #    避免智能体无目的地游荡
         time_penalty = -0.001
         
         # 3. 死亡惩罚（关键惩罚）
-        #    如果智能体死亡，给予大的负奖励
         death_penalty = 0.0
         if self.engine.is_done():
             death_penalty = -10.0
         
         # 4. 生存奖励（小幅正奖励）
-        #    鼓励智能体保持存活
         survival_reward = 0.01 if not self.engine.is_done() else 0.0
         
         # 5. 尺寸奖励（可选）
-        #    基于玩家细胞数量或其他指标的奖励
         size_reward = 0.0
         if self.prev_observation and self.prev_observation.player_states:
             prev_ps = list(self.prev_observation.player_states.values())[0]
@@ -298,6 +326,46 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         
         # 更新上一帧分数
         self.last_score = ps.score
+        
+        return total_reward
+    
+    def _calculate_enhanced_reward(self, action):
+        """
+        计算增强奖励（使用增强奖励系统）
+        """
+        if not hasattr(self, 'enhanced_reward_calculator'):
+            # 懒加载增强奖励计算器
+            try:
+                from enhanced_reward_system import EnhancedRewardCalculator
+                self.enhanced_reward_calculator = EnhancedRewardCalculator(self.config)
+                self.reward_components_history = []
+            except ImportError:
+                print("⚠️  警告: 无法导入增强奖励系统，回退到简单奖励")
+                return self._calculate_simple_reward()
+        
+        # 使用增强奖励系统计算奖励
+        total_reward, reward_components = self.enhanced_reward_calculator.calculate_reward(
+            self.current_obs, 
+            self.prev_observation, 
+            action or [0, 0, 0],  # 默认动作
+            self.episode_step
+        )
+        
+        # 记录奖励组件（用于调试）
+        self.reward_components_history.append({
+            'step': self.episode_step,
+            'total_reward': total_reward,
+            'components': reward_components
+        })
+        
+        # 保持历史长度
+        if len(self.reward_components_history) > 50:
+            self.reward_components_history.pop(0)
+        
+        # 更新上一帧分数（保持兼容性）
+        if self.current_obs and self.current_obs.player_states:
+            ps = list(self.current_obs.player_states.values())[0]
+            self.last_score = ps.score
         
         return total_reward
     

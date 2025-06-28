@@ -21,6 +21,8 @@ try:
     from rich.panel import Panel
     from rich.live import Live
     from rich.text import Text
+    from rich.align import Align
+    from rich.columns import Columns
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
@@ -42,6 +44,7 @@ try:
     from stable_baselines3.common.vec_env import DummyVecEnv
     from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
     from stable_baselines3.common.logger import configure
+    from stable_baselines3.common.monitor import Monitor
     STABLE_BASELINES_AVAILABLE = True
     print("✅ 检测到 stable-baselines3，将使用专业RL算法")
 except ImportError:
@@ -50,7 +53,7 @@ except ImportError:
     print("💡 安装命令: pip install stable-baselines3[extra]")
 
 class TrainingCallback(BaseCallback):
-    """训练过程监控回调（带Rich界面）"""
+    """训练过程监控回调（支持增强奖励显示）"""
     
     def __init__(self, eval_freq=1000, save_freq=5000, verbose=1, total_timesteps=50000):
         super().__init__(verbose)
@@ -60,6 +63,7 @@ class TrainingCallback(BaseCallback):
         self.episode_rewards = deque(maxlen=100)
         self.episode_scores = deque(maxlen=100)
         self.total_timesteps = total_timesteps
+        self.use_enhanced_reward = False  # 默认值，会在外部设置
         
         # Rich界面组件
         if RICH_AVAILABLE:
@@ -90,6 +94,19 @@ class TrainingCallback(BaseCallback):
             self.start_time = time.time()
             self.last_table_update = 0
             self.table_update_interval = 5  # 每5秒更新一次表格
+            
+            # 创建进度条
+            self.progress = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                console=self.console,
+                expand=True
+            )
+            self.progress_task = None
         
     def _update_training_table(self):
         """更新训练状态表格"""
@@ -97,7 +114,8 @@ class TrainingCallback(BaseCallback):
             return
             
         # 清除旧表格内容
-        self.training_table = Table(title="🤖 GoBigger RL Training Status")
+        reward_type = "增强奖励" if self.use_enhanced_reward else "标准奖励"
+        self.training_table = Table(title=f"🤖 GoBigger RL Training Status ({reward_type})")
         self.training_table.add_column("Category", style="cyan", no_wrap=True)
         self.training_table.add_column("Metric", style="blue", no_wrap=True)
         self.training_table.add_column("Value", style="magenta")
@@ -126,6 +144,12 @@ class TrainingCallback(BaseCallback):
         # Episode info
         self.training_table.add_row("episodes/", "completed", f"{self.training_stats['episodes_completed']}")
         
+        # 增强奖励系统特有信息
+        if self.use_enhanced_reward:
+            self.training_table.add_row("", "", "")  # 分隔线
+            self.training_table.add_row("enhanced/", "system", "🎯 密集奖励信号")
+            self.training_table.add_row("", "components", "多维度奖励")
+        
     def _on_step(self) -> bool:
         # 收集奖励和分数统计
         for info in self.locals['infos']:
@@ -141,9 +165,22 @@ class TrainingCallback(BaseCallback):
                     print(f"🎯 Episode 结束 - 最终分数: {final_score:.2f}, "
                           f"分数变化: {score_delta:+.2f}, 步数: {episode_length}")
             
+            # 手动收集episode reward信息
             if 'episode' in info:
                 episode_reward = info['episode']['r']
+                episode_len = info['episode']['l']
                 self.episode_rewards.append(episode_reward)
+                
+                # 手动更新episode统计
+                if len(self.episode_rewards) > 0:
+                    self.training_stats['ep_rew_mean'] = np.mean(self.episode_rewards)
+                if len(self.episode_rewards) > 0:
+                    # 使用episode长度信息
+                    ep_lengths = [info['episode']['l'] for info in self.locals.get('infos', []) if 'episode' in info]
+                    if ep_lengths:
+                        self.training_stats['ep_len_mean'] = np.mean(ep_lengths)
+                    else:
+                        self.training_stats['ep_len_mean'] = episode_len
         
         # 更新训练统计
         if RICH_AVAILABLE:
@@ -208,21 +245,64 @@ class TrainingCallback(BaseCallback):
         return True
 
 def create_env(config=None):
-    """创建训练环境"""
+    """创建训练环境（带Monitor）"""
     default_config = {
         'max_episode_steps': 2000,  # 每局最大步数
+        'use_enhanced_reward': False,  # 默认使用简单奖励
     }
     if config:
         default_config.update(config)
     
-    return GoBiggerEnv(default_config)
+    # 创建环境并用Monitor包装（重要：这是episode统计的关键）
+    env = GoBiggerEnv(default_config)
+    if STABLE_BASELINES_AVAILABLE:
+        env = Monitor(env)
+    return env
 
-def train_with_stable_baselines3(algorithm='PPO', total_timesteps=100000, config=None):
-    """使用stable-baselines3训练智能体（带Rich界面）"""
-    print(f"🚀 开始使用 {algorithm} 算法训练...")
+def create_enhanced_env(config=None):
+    """创建增强奖励训练环境（带Monitor）"""
+    enhanced_config = {
+        'max_episode_steps': 2000,
+        'use_enhanced_reward': True,  # 启用增强奖励系统
+        'enhanced_reward_weights': {
+            'score_growth': 2.0,        # 分数增长奖励权重
+            'efficiency': 1.5,          # 效率奖励权重
+            'exploration': 0.8,         # 探索奖励权重
+            'strategic_split': 2.0,     # 战略分裂奖励权重
+            'food_density': 1.0,        # 食物密度奖励权重
+            'survival': 0.02,           # 生存奖励权重
+            'time_penalty': -0.001,     # 时间惩罚权重
+            'death_penalty': -20.0,     # 死亡惩罚权重
+        }
+    }
+    if config:
+        enhanced_config.update(config)
     
-    # 创建环境
-    env = make_vec_env(lambda: create_env(config), n_envs=1, vec_env_cls=DummyVecEnv)
+    # 创建环境并用Monitor包装（重要：这是episode统计的关键）
+    env = GoBiggerEnv(enhanced_config)
+    if STABLE_BASELINES_AVAILABLE:
+        env = Monitor(env)
+    return env
+
+def train_with_stable_baselines3(algorithm='PPO', total_timesteps=100000, config=None, use_enhanced_reward=False):
+    """使用stable-baselines3训练智能体（支持增强奖励系统）"""
+    reward_type = "增强奖励" if use_enhanced_reward else "标准奖励"
+    print(f"🚀 开始使用 {algorithm} 算法训练 ({reward_type})...")
+    
+    # 创建环境 - 使用vectorized environment以正确支持episode统计
+    def make_env():
+        if use_enhanced_reward:
+            return create_enhanced_env(config)
+        else:
+            return create_env(config)
+    
+    if use_enhanced_reward:
+        print("✨ 使用增强奖励系统 - 提供更密集的奖励信号")
+    else:
+        print("📊 使用标准奖励系统")
+    
+    # 使用make_vec_env来正确集成Monitor和episode统计
+    env = make_vec_env(make_env, n_envs=1, vec_env_cls=DummyVecEnv)
     
     # 创建模型
     if algorithm == 'PPO':
@@ -230,7 +310,7 @@ def train_with_stable_baselines3(algorithm='PPO', total_timesteps=100000, config
             "MlpPolicy", 
             env,
             learning_rate=3e-4,
-            n_steps=2048,
+            n_steps=512,  # 降低步数以获得更频繁的统计更新
             batch_size=64,
             n_epochs=10,
             gamma=0.99,
@@ -280,6 +360,16 @@ def train_with_stable_baselines3(algorithm='PPO', total_timesteps=100000, config
         class RichTrainingCallback(TrainingCallback):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
+                self.use_enhanced_reward = use_enhanced_reward  # 在父类初始化后设置
+                # print(f"🔍 回调初始化调试: use_enhanced_reward = {self.use_enhanced_reward}")
+                
+                # 初始化进度条任务
+                if hasattr(self, 'progress'):
+                    reward_type = "增强奖励" if self.use_enhanced_reward else "标准奖励"
+                    self.progress_task = self.progress.add_task(
+                        f"[green]🚀 {algorithm} 训练 ({reward_type})", 
+                        total=total_timesteps
+                    )
                 
             def _on_step(self):
                 # 更新训练统计
@@ -290,6 +380,21 @@ def train_with_stable_baselines3(algorithm='PPO', total_timesteps=100000, config
                 # 从模型获取训练指标
                 if hasattr(self.model, 'logger') and hasattr(self.model.logger, 'name_to_value'):
                     logger_data = self.model.logger.name_to_value
+                    
+                    # 调试：打印所有logger数据 (可选，取消注释以启用调试)
+                    # if self.num_timesteps % 1000 == 0:  # 每1000步打印一次调试信息
+                    #     print(f"\n🔍 Logger完整数据调试 (步数: {self.num_timesteps}):")
+                    #     if logger_data:
+                    #         for key, value in logger_data.items():
+                    #             print(f"  {key}: {value}")
+                    #     else:
+                    #         print("  Logger数据为空!")
+                    #     
+                    #     print(f"🔍 Training Stats调试:")
+                    #     for key, value in self.training_stats.items():
+                    #         if value != 0:  # 只显示非零值
+                    #             print(f"  {key}: {value}")
+                    #     print()
                     
                     # 更新各项指标
                     for key, value in logger_data.items():
@@ -310,64 +415,163 @@ def train_with_stable_baselines3(algorithm='PPO', total_timesteps=100000, config
                     self._update_training_table()
                     self.last_table_update = current_time
                     
-                    # 显示当前进度
-                    progress_percent = (self.num_timesteps / self.total_timesteps) * 100
-                    self.console.clear()
-                    self.console.print(self.training_table)
-                    self.console.print(f"\n📈 训练进度: {progress_percent:.1f}% "
-                                     f"({self.num_timesteps:,}/{self.total_timesteps:,} steps)")
+                    # 更新进度条
+                    if hasattr(self, 'progress') and self.progress_task is not None:
+                        self.progress.update(self.progress_task, completed=self.num_timesteps)
                     
-                    if len(self.episode_scores) > 0:
-                        latest_score = self.episode_scores[-1] if self.episode_scores else 0
-                        self.console.print(f"🎯 最新Episode分数: {latest_score:.0f}")
+                    # 创建布局组件
+                    reward_panel, tensorboard_panel, status_panel = self._create_training_layout()
+                    
+                    # 清屏并显示
+                    self.console.clear()
+                    
+                    # 显示上排面板
+                    top_row = Columns([reward_panel, tensorboard_panel], equal=True)
+                    self.console.print(top_row)
+                    self.console.print("")
+                    
+                    # 显示训练统计表格
+                    stats_panel = Panel(
+                        self.training_table,
+                        title="训练统计",
+                        border_style="blue"
+                    )
+                    self.console.print(stats_panel)
+                    self.console.print("")
+                    
+                    # 显示状态信息
+                    self.console.print(status_panel)
                 
                 return super()._on_step()
+            
+            def _create_training_layout(self):
+                """创建训练界面布局"""
+                # 奖励系统信息面板
+                reward_type = "增强奖励" if self.use_enhanced_reward else "标准奖励"
+                reward_icon = "🎯" if self.use_enhanced_reward else "📊"
+                reward_desc = "密集奖励信号，多维度反馈" if self.use_enhanced_reward else "经典强化学习奖励"
+                
+                reward_panel = Panel(
+                    f"[bold green]{reward_icon} {reward_type}系统[/bold green]\n[dim]{reward_desc}[/dim]",
+                    title="奖励系统",
+                    border_style="green"
+                )
+                
+                # TensorBoard提示
+                tensorboard_panel = Panel(
+                    "[bold cyan]📊 TensorBoard监控[/bold cyan]\n" +
+                    "[dim]在新终端中运行以下命令查看详细训练曲线:[/dim]\n" +
+                    "[yellow]tensorboard --logdir ./tensorboard_logs[/yellow]\n" +
+                    "[dim]然后在浏览器中访问: http://localhost:6006[/dim]",
+                    title="监控工具",
+                    border_style="cyan"
+                )
+                
+                # 状态信息
+                progress_percent = (self.num_timesteps / self.total_timesteps) * 100
+                status_lines = []
+                status_lines.append(f"[bold blue]训练进度[/bold blue]: {progress_percent:.1f}% ({self.num_timesteps:,}/{self.total_timesteps:,} steps)")
+                
+                if len(self.episode_scores) > 0:
+                    latest_score = self.episode_scores[-1]
+                    avg_score = np.mean(self.episode_scores)
+                    status_lines.append(f"[bold yellow]Episode信息[/bold yellow]: 最新分数={latest_score:.0f}, 平均分数={avg_score:.0f}")
+                
+                if self.use_enhanced_reward:
+                    status_lines.append("[dim]💡 增强奖励提供更密集的学习信号[/dim]")
+                
+                status_panel = Panel(
+                    "\n".join(status_lines),
+                    title="状态信息",
+                    border_style="magenta"
+                )
+                
+                # 创建完整布局并返回所有组件
+                return reward_panel, tensorboard_panel, status_panel
         
         callback = RichTrainingCallback(eval_freq=2000, save_freq=10000, total_timesteps=total_timesteps)
         
         # 开始训练
-        print(f"📈 开始训练，目标步数: {total_timesteps}")
-        print("💡 训练界面将定期更新...")
+        print(f"📈 开始使用 {algorithm} 训练，目标步数: {total_timesteps}")
+        print(f"🎯 奖励系统: {'增强奖励' if use_enhanced_reward else '标准奖励'}")
+        print("� TensorBoard日志: ./tensorboard_logs/")
+        print("�💡 训练界面将每5秒更新一次...")
+        print("\n🚀 启动 TensorBoard 监控:")
+        print("   在新终端中运行: tensorboard --logdir ./tensorboard_logs")
+        print("   然后访问: http://localhost:6006")
+        print("\n" + "="*60)
         start_time = time.time()
         
-        model.learn(
-            total_timesteps=total_timesteps,
-            callback=callback,
-            tb_log_name=f"{algorithm}_gobigger"
-        )
+        # 启动进度条
+        with callback.progress:
+            model.learn(
+                total_timesteps=total_timesteps,
+                callback=callback,
+                tb_log_name=f"{algorithm}_gobigger_{'enhanced' if use_enhanced_reward else 'standard'}"
+            )
         
         train_time = time.time() - start_time
-        callback.console.print(f"\n✅ 训练完成！用时: {train_time:.2f}秒", style="green bold")
+        
+        # 训练完成信息
+        callback.console.clear()
+        completion_panel = Panel(
+            f"[bold green]✅ 训练成功完成！[/bold green]\n\n" +
+            f"[yellow]训练时间[/yellow]: {train_time:.2f}秒 ({train_time/60:.1f}分钟)\n" +
+            f"[yellow]总步数[/yellow]: {total_timesteps:,}\n" +
+            f"[yellow]奖励系统[/yellow]: {'增强奖励' if use_enhanced_reward else '标准奖励'}\n" +
+            f"[yellow]算法[/yellow]: {algorithm}\n\n" +
+            f"[cyan]📊 查看详细训练曲线:[/cyan]\n" +
+            f"[dim]tensorboard --logdir ./tensorboard_logs[/dim]\n\n" +
+            f"[cyan]📁 模型文件:[/cyan]\n" +
+            f"[dim]./models/ 和 ./checkpoints/[/dim]",
+            title="🎉 训练完成",
+            border_style="green"
+        )
+        callback.console.print(completion_panel)
         
     else:
         # 传统文本界面训练
         callback = TrainingCallback(eval_freq=2000, save_freq=10000, total_timesteps=total_timesteps)
+        callback.use_enhanced_reward = use_enhanced_reward
         
-        print(f"📈 开始训练，目标步数: {total_timesteps}")
+        reward_info = "增强奖励系统" if use_enhanced_reward else "标准奖励系统"
+        print(f"📈 开始训练，目标步数: {total_timesteps} ({reward_info})")
+        print("📊 TensorBoard监控:")
+        print("   在新终端运行: tensorboard --logdir ./tensorboard_logs")
+        print("   访问: http://localhost:6006")
+        print("="*50)
         start_time = time.time()
         
         model.learn(
             total_timesteps=total_timesteps,
             callback=callback,
-            tb_log_name=f"{algorithm}_gobigger"
+            tb_log_name=f"{algorithm}_gobigger_{'enhanced' if use_enhanced_reward else 'standard'}"
         )
         
         train_time = time.time() - start_time
-        print(f"✅ 训练完成！用时: {train_time:.2f}秒")
+        print(f"\n✅ 训练完成！用时: {train_time:.2f}秒 ({train_time/60:.1f}分钟)")
+        print("📊 查看训练曲线: tensorboard --logdir ./tensorboard_logs")
     
     # 保存最终模型
-    final_model_path = f"models/{algorithm}_gobigger_final.zip"
+    reward_suffix = "_enhanced" if use_enhanced_reward else "_standard"
+    final_model_path = f"models/{algorithm}_gobigger{reward_suffix}_final.zip"
     os.makedirs("models", exist_ok=True)
     model.save(final_model_path)
     print(f"💾 最终模型已保存: {final_model_path}")
     
     return model
 
-def simple_random_training(episodes=100):
-    """简单的随机策略演示（当没有stable-baselines3时）"""
-    print("🎮 运行随机策略演示训练...")
+def simple_random_training(episodes=100, use_enhanced_reward=False):
+    """简单的随机策略演示（支持增强奖励系统）"""
+    reward_type = "增强奖励" if use_enhanced_reward else "标准奖励"
+    print(f"🎮 运行随机策略演示训练 ({reward_type})...")
     
-    env = create_env({'max_episode_steps': 500})
+    if use_enhanced_reward:
+        env = create_enhanced_env({'max_episode_steps': 500})
+        print("✨ 使用增强奖励系统进行演示")
+    else:
+        env = create_env({'max_episode_steps': 500})
+        print("📊 使用标准奖励系统进行演示")
     
     episode_rewards = []
     episode_lengths = []
@@ -379,7 +583,7 @@ def simple_random_training(episodes=100):
         
         while True:
             # 随机动作
-            action = np.random.uniform(env.action_space_low, env.action_space_high)
+            action = env.action_space.sample()
             action[2] = int(action[2])  # 动作类型为整数
             
             obs, reward, terminated, truncated, info = env.step(action)
@@ -394,6 +598,16 @@ def simple_random_training(episodes=100):
                     if (episode + 1) % 10 == 0:  # 每10个episode显示一次详细信息
                         print(f"  Episode {episode + 1} 结束 - 最终分数: {final_score:.2f}, "
                               f"分数变化: {score_delta:+.2f}, 总奖励: {total_reward:.3f}")
+                        
+                        # 如果使用增强奖励，显示奖励组件信息
+                        if use_enhanced_reward and hasattr(env, 'reward_components_history') and env.reward_components_history:
+                            latest_components = env.reward_components_history[-1]['components']
+                            if latest_components:
+                                print(f"    奖励组件: ", end="")
+                                for comp, val in latest_components.items():
+                                    if abs(val) > 0.001:
+                                        print(f"{comp}={val:.3f} ", end="")
+                                print()
                 break
         
         episode_rewards.append(total_reward)
@@ -409,7 +623,8 @@ def simple_random_training(episodes=100):
     
     plt.subplot(1, 2, 1)
     plt.plot(episode_rewards)
-    plt.title('Episode Rewards')
+    title = f'Episode Rewards ({reward_type})'
+    plt.title(title)
     plt.xlabel('Episode')
     plt.ylabel('Total Reward')
     
@@ -420,11 +635,15 @@ def simple_random_training(episodes=100):
     plt.ylabel('Steps')
     
     plt.tight_layout()
-    plt.savefig('random_training_results.png')
+    filename = f'random_training_results_{reward_type.lower().replace(" ", "_")}.png'
+    plt.savefig(filename)
     plt.show()
     
-    print(f"📊 训练结果已保存到 random_training_results.png")
+    print(f"📊 训练结果已保存到 {filename}")
     print(f"📈 最终平均奖励: {np.mean(episode_rewards[-20:]):.3f}")
+    
+    if use_enhanced_reward:
+        print("💡 增强奖励系统提供了更密集的奖励信号")
 
 def evaluate_model(model_path, episodes=10):
     """评估训练好的模型"""
@@ -482,8 +701,8 @@ def evaluate_model(model_path, episodes=10):
 
 def main():
     """主训练函数"""
-    print("🤖 GoBigger 强化学习训练器")
-    print("=" * 50)
+    print("🤖 GoBigger 强化学习训练器 (支持增强奖励)")
+    print("=" * 60)
     
     if not RICH_AVAILABLE:
         print("💡 建议安装 rich 库获得更好的训练界面: pip install rich")
@@ -491,7 +710,16 @@ def main():
         print()
     else:
         console = Console()
-        console.print("✨ 检测到 Rich 库，使用美化界面", style="green bold")
+        welcome_panel = Panel(
+            "[bold green]🎉 欢迎使用 GoBigger RL 训练器[/bold green]\n\n" +
+            "[yellow]✨ Rich界面支持[/yellow]: 美化界面、进度条、实时统计\n" +
+            "[yellow]📊 TensorBoard集成[/yellow]: 详细训练曲线监控\n" +
+            "[yellow]🎯 增强奖励系统[/yellow]: 多维度密集奖励信号\n" +
+            "[yellow]🚀 多算法支持[/yellow]: PPO、DQN、A2C",
+            title="功能特色",
+            border_style="green"
+        )
+        console.print(welcome_panel)
         print()
     
     # 训练配置
@@ -500,42 +728,67 @@ def main():
     }
     
     if STABLE_BASELINES_AVAILABLE:
-        print("🎯 选择训练算法:")
-        print("1. PPO (推荐) - Proximal Policy Optimization")
-        print("2. DQN - Deep Q-Network") 
-        print("3. A2C - Advantage Actor-Critic")
-        print("4. 评估现有模型")
-        print("5. 随机策略演示")
+        print("🎯 选择训练模式:")
+        print("1. PPO + 标准奖励 - 经典强化学习")
+        print("2. PPO + 增强奖励 - 密集奖励信号 (推荐)")
+        print("3. DQN + 标准奖励")
+        print("4. DQN + 增强奖励")
+        print("5. A2C + 标准奖励")
+        print("6. A2C + 增强奖励")
+        print("7. 评估现有模型")
+        print("8. 随机策略演示 (标准奖励)")
+        print("9. 随机策略演示 (增强奖励)")
         
-        choice = input("\n请选择 (1-5): ").strip()
+        choice = input("\n请选择 (1-9): ").strip()
         
         if choice == '1':
-            model = train_with_stable_baselines3('PPO', total_timesteps=50000, config=config)
+            model = train_with_stable_baselines3('PPO', total_timesteps=200000, config=config, use_enhanced_reward=False)
         elif choice == '2':
-            model = train_with_stable_baselines3('DQN', total_timesteps=50000, config=config)
+            model = train_with_stable_baselines3('PPO', total_timesteps=200000, config=config, use_enhanced_reward=True)
         elif choice == '3':
-            model = train_with_stable_baselines3('A2C', total_timesteps=50000, config=config)
+            model = train_with_stable_baselines3('DQN', total_timesteps=50000, config=config, use_enhanced_reward=False)
         elif choice == '4':
+            model = train_with_stable_baselines3('DQN', total_timesteps=50000, config=config, use_enhanced_reward=True)
+        elif choice == '5':
+            model = train_with_stable_baselines3('A2C', total_timesteps=50000, config=config, use_enhanced_reward=False)
+        elif choice == '6':
+            model = train_with_stable_baselines3('A2C', total_timesteps=50000, config=config, use_enhanced_reward=True)
+        elif choice == '7':
             model_path = input("请输入模型路径: ").strip()
             if os.path.exists(model_path):
                 evaluate_model(model_path)
             else:
                 print("❌ 模型文件不存在")
-        elif choice == '5':
-            simple_random_training(episodes=50)
+        elif choice == '8':
+            simple_random_training(episodes=50, use_enhanced_reward=False)
+        elif choice == '9':
+            simple_random_training(episodes=50, use_enhanced_reward=True)
         else:
             print("❌ 无效选择")
             
     else:
-        simple_random_training(episodes=50)
+        print("🎯 选择演示模式:")
+        print("1. 随机策略演示 (标准奖励)")
+        print("2. 随机策略演示 (增强奖励)")
+        
+        choice = input("\n请选择 (1-2): ").strip()
+        
+        if choice == '1':
+            simple_random_training(episodes=50, use_enhanced_reward=False)
+        elif choice == '2':
+            simple_random_training(episodes=50, use_enhanced_reward=True)
+        else:
+            print("❌ 无效选择")
     
     print("\n🎉 训练完成！")
     print("💡 提示：")
-    print("  - 使用 tensorboard --logdir ./tensorboard_logs 查看训练曲线")
-    print("  - 模型保存在 ./models/ 目录")
-    print("  - 检查点保存在 ./checkpoints/ 目录")
+    print("  - 📊 查看训练曲线: tensorboard --logdir ./tensorboard_logs")
+    print("  - 🌐 TensorBoard访问: http://localhost:6006")
+    print("  - 📁 模型保存位置: ./models/")
+    print("  - 💾 检查点位置: ./checkpoints/")
+    print("  - 🎯 增强奖励系统提供更密集的学习信号，推荐用于新训练")
     if not RICH_AVAILABLE:
-        print("  - 建议安装 rich 库享受更好的训练界面体验: pip install rich")
+        print("  - ✨ 建议安装 rich 库享受更好的训练界面体验: pip install rich")
 
 if __name__ == "__main__":
     main()
