@@ -789,27 +789,32 @@ QRectF GameEngine::calculatePlayerViewRect(int playerId) const
 
 QVector<QVector<float>> GameEngine::preprocessObjects(const QVector<QVector<float>>& objects, int maxCount) const
 {
+    // 先截取超过限制的部分
     QVector<QVector<float>> result = objects;
-    
-    // 如果超出数量限制，按距离排序并裁剪（距离玩家中心）
     if (result.size() > maxCount) {
-        // TODO: 实现更精确的距离排序
-        // 目前简单截取前maxCount个
         result = result.mid(0, maxCount);
     }
-    
-    // 确定特征向量的维度
-    int featureCount = 4; // 默认维度
-    if (!objects.isEmpty()) {
-        featureCount = objects.first().size();
+    // 根据 maxCount 确定特征维度
+    int featureCount = 4;
+    if (maxCount == 50) {
+        featureCount = 4;  // 食物: [x,y,r,score]
+    } else if (maxCount == 20 || maxCount == 10) {
+        featureCount = 6;  // 荆棘/孢子: [x,y,r,score,vx,vy]
+    } else if (maxCount == 30) {
+        featureCount = 10; // 克隆球: [x,y,r,score,vx,vy,dir_x,dir_y,team,player]
     }
-    
-    // 如果不足数量，用0填充
+    // 调整所有现有元素到统一维度
+    for (auto& vec : result) {
+        if (vec.size() > featureCount) {
+            vec = vec.mid(0, featureCount);
+        } else if (vec.size() < featureCount) {
+            vec.append(QVector<float>(featureCount - vec.size(), 0.0f));
+        }
+    }
+    // 填充不足数量的元素
     while (result.size() < maxCount) {
-        QVector<float> zeros(featureCount, 0.0f);
-        result.append(zeros);
+        result.append(QVector<float>(featureCount, 0.0f));
     }
-    
     return result;
 }
 

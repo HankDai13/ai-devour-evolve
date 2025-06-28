@@ -6,10 +6,11 @@ import sys
 import os
 from pathlib import Path
 
-# 路径设置
-root_dir = Path(__file__).parent
-sys.path.insert(0, str(root_dir / "build" / "Release"))
-os.environ["PATH"] = f"{str(root_dir / 'build' / 'Release')};{os.environ['PATH']}"
+# 路径设置：项目根目录
+root_dir = Path(__file__).parent.parent
+build_dir = root_dir / "build" / "Release"
+sys.path.insert(0, str(build_dir))
+os.environ["PATH"] = f"{str(build_dir)};{os.environ['PATH']}"
 
 import gobigger_env
 

@@ -4,7 +4,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # 构建选项
 option(ENABLE_GUI "Enable Qt GUI" ON)
-option(ENABLE_PYTHON_BINDING "Enable Python binding with pybind11" OFF)
+option(ENABLE_PYTHON_BINDING "Enable Python binding with pybind11" ON)
 
 # 根据编译器选择Qt路径
 if(MSVC)
@@ -238,7 +238,7 @@ if(WIN32)
             target_compile_options(gobigger_core PRIVATE /W3)
             set_property(TARGET gobigger_core PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
         endif()
-        if(TARGET ai-devour-evolve)
+        if(TARGET ai-devour_evolve)
             target_compile_options(ai-devour-evolve PRIVATE /W3)
             set_property(TARGET ai-devour-evolve PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
         endif()

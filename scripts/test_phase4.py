@@ -7,10 +7,11 @@ import sys
 import os
 from pathlib import Path
 
-# 确保从项目根目录导入，解决路径问题
-root_dir = Path(__file__).parent if Path(__file__).parent.name != "python" else Path(__file__).parent.parent
-sys.path.insert(0, str(root_dir / "build" / "Release"))
-os.environ["PATH"] = f"{str(root_dir / 'build' / 'Release')};{os.environ['PATH']}"
+# 路径设置：定位到项目根目录
+root_dir = Path(__file__).parent.parent
+build_dir = root_dir / "build" / "Release"
+sys.path.insert(0, str(build_dir))
+os.environ["PATH"] = f"{str(build_dir)};{os.environ['PATH']}"
 
 def test_observation_space_structure():
     """测试观察空间的数据结构"""

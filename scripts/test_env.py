@@ -4,10 +4,13 @@
 """
 import sys
 import os
+from pathlib import Path
 
-# 添加构建目录到 Python 路径
-build_path = os.path.join(os.path.dirname(__file__), 'build', 'Release')
-sys.path.insert(0, build_path)
+# 路径设置：定位到项目根目录
+root_dir = Path(__file__).parent.parent
+build_dir = root_dir / "build" / "Release"
+sys.path.insert(0, str(build_dir))
+os.environ["PATH"] = f"{build_dir};{os.environ['PATH']}"
 
 try:
     import gobigger_env

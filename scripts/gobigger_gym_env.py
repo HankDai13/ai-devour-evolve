@@ -8,10 +8,11 @@ import os
 from pathlib import Path
 import numpy as np
 
-# 路径设置
-root_dir = Path(__file__).parent
-sys.path.insert(0, str(root_dir / "build" / "Release"))
-os.environ["PATH"] = f"{str(root_dir / 'build' / 'Release')};{os.environ['PATH']}"
+# 路径设置：定位到项目根目录
+root_dir = Path(__file__).parent.parent
+build_dir = root_dir / "build" / "Release"
+sys.path.insert(0, str(build_dir))
+os.environ["PATH"] = f"{str(build_dir)};{os.environ['PATH']}"
 
 import gobigger_env
 
