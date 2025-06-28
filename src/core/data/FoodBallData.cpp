@@ -6,8 +6,10 @@ FoodBallData::FoodBallData(int ballId, const QPointF& position, const Border& bo
     : BaseBallData(ballId, FOOD_BALL, position, border)
     , m_colorIndex(QRandomGenerator::global()->bounded(4)) // 0-3的随机颜色索引
 {
-    setScore(GoBiggerConfig::FOOD_SCORE);
+    // 食物分数直接设置，绕过setScore的最小值限制
+    BaseBallData::m_score = GoBiggerConfig::FOOD_SCORE;
     setRadius(GoBiggerConfig::FOOD_RADIUS * GoBiggerConfig::FOOD_VISUAL_SCALE);
+    updateRadiusFromScore(); // 确保半径正确更新
 }
 
 bool FoodBallData::canEat(const BaseBallData* other) const

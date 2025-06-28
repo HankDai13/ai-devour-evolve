@@ -22,8 +22,8 @@ constexpr float RADIUS_DISPLAY_SCALE = 20.0f;      // 半径显示缩放因子�
 constexpr float BASE_SPEED = 300.0f;               // 基础移动速度 (参考文档200-300)
 constexpr float SPEED_DECAY_FACTOR = 1.0f;         // 速度衰减因子
 constexpr float ACCELERATION_FACTOR = 1.0f;        // 加速度因子 (acc_weight=30)
-constexpr float SPEED_RADIUS_COEFF_A = 50.00f;      // 速度计算系数A
-constexpr float SPEED_RADIUS_COEFF_B = 80.00f;      // 速度计算系数B
+constexpr float SPEED_RADIUS_COEFF_A = 200.00f;     // 速度计算系数A - 增大4倍以适应大地图
+constexpr float SPEED_RADIUS_COEFF_B = 320.00f;     // 速度计算系数B - 增大4倍以适应大地图
 // 实际速度 = (2.35 + 5.66 / radius) * ratio
 
 // 分裂参数 (参考GoBigger原版)

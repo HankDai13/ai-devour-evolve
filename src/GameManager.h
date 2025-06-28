@@ -22,8 +22,8 @@ class GameManager : public QObject
 
 public:
     struct Config {
-        // 游戏区域
-        Border gameBorder = Border(-400, 400, -400, 400);
+        // 游戏区域 - 扩大到6000x6000以匹配GoBigger训练环境
+        Border gameBorder = Border(-3000, 3000, -3000, 3000);
         
         // 食物配置 (完全对齐GoBigger原版策略)
         int maxFoodCount = GoBiggerConfig::FOOD_COUNT_MAX;      // 最大食物数量 (900)
