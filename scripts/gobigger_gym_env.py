@@ -93,6 +93,8 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         
         # 奖励函数优化：追踪分数变化
         self.last_score = 0.0
+        self.initial_score = 0.0  # 记录初始分数
+        self.final_score = 0.0    # 记录最终分数
         self.prev_observation = None
         
     def reset(self, seed=None, options=None):
@@ -108,9 +110,12 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         if self.current_obs and self.current_obs.player_states:
             ps = list(self.current_obs.player_states.values())[0]
             self.last_score = ps.score
+            self.initial_score = ps.score  # 记录初始分数
         else:
             self.last_score = 0.0
+            self.initial_score = 0.0
         
+        self.final_score = 0.0  # 重置最终分数
         self.prev_observation = self.current_obs
         
         # 兼容不同版本的gym
@@ -144,11 +149,26 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         terminated = self.engine.is_done()
         truncated = self.episode_step >= self.max_episode_steps
         
+        # 准备info字典
+        info = {}
+        
+        # 如果episode结束，记录最终分数
+        if terminated or truncated:
+            if self.current_obs and self.current_obs.player_states:
+                ps = list(self.current_obs.player_states.values())[0]
+                self.final_score = ps.score
+            else:
+                self.final_score = self.last_score
+            
+            info['final_score'] = self.final_score
+            info['score_delta'] = self.final_score - self.initial_score
+            info['episode_length'] = self.episode_step
+        
         # 兼容不同版本的gym
         if GYMNASIUM_AVAILABLE:
-            return self._extract_features(), reward, terminated, truncated, {}
+            return self._extract_features(), reward, terminated, truncated, info
         else:
-            return self._extract_features(), reward, terminated or truncated, {}
+            return self._extract_features(), reward, terminated or truncated, info
     
     def _extract_features(self):
         """从C++观察中提取特征向量（优化版）"""
