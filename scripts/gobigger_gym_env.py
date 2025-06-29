@@ -282,12 +282,13 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         if use_enhanced_reward and hasattr(self, 'enhanced_reward_calculator'):
             return self._calculate_enhanced_reward(action)
         else:
-            return self._calculate_simple_reward()
+            return self._calculate_simple_reward(action)
     
-    def _calculate_simple_reward(self):
+    def _calculate_simple_reward(self, action=None):
         """
-        计算简单奖励（原版逻辑）
+        计算简单奖励（原版逻辑 + Gemini优化的事件驱动奖励）
         核心思想：奖励分数增量而非绝对分数，避免奖励稀疏性问题
+        🔥 新增：大幅奖励Split和Eject高级动作，解决策略崩塌问题
         """
         if not self.current_obs or not self.current_obs.player_states:
             return -5.0  # 无效状态惩罚
@@ -309,7 +310,38 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         # 4. 生存奖励（小幅正奖励）
         survival_reward = 0.01 if not self.engine.is_done() else 0.0
         
-        # 5. 尺寸奖励（可选）
+        # 🔥 5. 事件驱动的高级动作奖励（Gemini推荐）
+        advanced_action_reward = 0.0
+        if action is not None and len(action) >= 3:
+            action_type = int(np.round(np.clip(action[2], 0, 2)))
+            
+            # Split动作奖励（动作类型1）
+            if action_type == 1:
+                base_split_reward = 2.0  # 基础Split奖励
+                # 如果Split后分数确实增加，给予额外奖励
+                if score_delta > 0:
+                    advanced_action_reward += base_split_reward + score_delta / 50.0
+                    if hasattr(self, 'debug_rewards'):
+                        print(f"🎯 Split成功! 奖励: {base_split_reward + score_delta / 50.0:.3f}")
+                else:
+                    # 即使Split没有立即获得分数，也给予小奖励鼓励探索
+                    advanced_action_reward += base_split_reward * 0.3
+                    if hasattr(self, 'debug_rewards'):
+                        print(f"🔄 Split尝试! 奖励: {base_split_reward * 0.3:.3f}")
+            
+            # Eject动作奖励（动作类型2）
+            elif action_type == 2:
+                base_eject_reward = 1.5  # 基础Eject奖励
+                # 如果Eject后分数增加（可能喂食队友或战略使用），给予奖励
+                if score_delta >= 0:  # 不惩罚Eject，鼓励战略使用
+                    advanced_action_reward += base_eject_reward
+                    if hasattr(self, 'debug_rewards'):
+                        print(f"💨 Eject使用! 奖励: {base_eject_reward:.3f}")
+                else:
+                    # 即使损失分数，也给小奖励避免过度惩罚
+                    advanced_action_reward += base_eject_reward * 0.2
+        
+        # 6. 尺寸奖励（基于细胞数量变化）
         size_reward = 0.0
         if self.prev_observation and self.prev_observation.player_states:
             prev_ps = list(self.prev_observation.player_states.values())[0]
@@ -322,10 +354,12 @@ class GoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         
         # 总奖励计算
         total_reward = (score_reward + time_penalty + death_penalty + 
-                       survival_reward + size_reward)
+                       survival_reward + size_reward + advanced_action_reward)
         
         # 更新上一帧分数
         self.last_score = ps.score
+        
+        return total_reward
         
         return total_reward
     

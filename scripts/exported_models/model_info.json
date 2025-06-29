@@ -1,0 +1,35 @@
+{
+  "model_type": "PPO",
+  "observation_space_size": 400,
+  "action_space": {
+    "type": "continuous",
+    "shape": [
+      3
+    ],
+    "low": [
+      -1.0,
+      -1.0,
+      0
+    ],
+    "high": [
+      1.0,
+      1.0,
+      2
+    ]
+  },
+  "input_format": "float32 array of shape (batch_size, 400)",
+  "output_format": {
+    "action_logits": "float32 array of shape (batch_size, 3)",
+    "value": "float32 array of shape (batch_size, 1)"
+  },
+  "preprocessing": {
+    "normalization": "Environment handles normalization",
+    "feature_extraction": "Raw observation from GoBigger environment"
+  },
+  "usage_notes": [
+    "Model expects observations from GoBiggerEnv with 400 features",
+    "Action type should be rounded to nearest integer (0, 1, or 2)",
+    "dx, dy should be clipped to [-1.0, 1.0] range",
+    "Model was trained with Gemini-optimized hyperparameters"
+  ]
+}
