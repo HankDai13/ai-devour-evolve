@@ -10,6 +10,8 @@
 class GameManager;
 class CloneBall;
 class BaseBall;
+class AIDebugWidget;
+namespace GoBigger { namespace AI { class SimpleAIPlayer; } }
 
 // GameView继承自QGraphicsView，成为游戏视图
 class GameView : public QGraphicsView
@@ -29,6 +31,17 @@ public:
     // 玩家控制
     CloneBall* getMainPlayer() const { return m_mainPlayer; }
     float getTotalPlayerScore() const; // 获取玩家总分数（所有分身球的分数总和）
+    
+    // AI玩家控制
+    void addAIPlayer();
+    void addRLAIPlayer();
+    void startAllAI();
+    void stopAllAI();
+    void removeAllAI();
+    
+    // AI调试功能
+    void showAIDebugConsole();
+    void toggleAIDebugConsole();
 
 protected:
     // 事件处理
@@ -66,6 +79,12 @@ private:
     qreal m_maxVisionRadius;
     qreal m_scaleUpRatio;
     
+    // AI控制
+    QVector<GoBigger::AI::SimpleAIPlayer*> m_aiPlayers;
+    
+    // AI调试
+    AIDebugWidget* m_aiDebugWidget;
+
     // 初始化
     void initializeView();
     void initializePlayer();

@@ -4,6 +4,8 @@
 #include "FoodBall.h"
 #include "SporeBall.h"
 #include "BaseBall.h"
+#include "SimpleAIPlayer.h"
+#include "AIDebugWidget.h"
 #include "GoBiggerConfig.h"
 #include <QGraphicsScene>
 #include <QKeyEvent>
@@ -17,6 +19,7 @@
 #include <QCursor>
 #include <QPainter>
 #include <QLineF>
+#include <QMessageBox>
 #include <cmath>
 
 GameView::GameView(QWidget *parent) 
@@ -30,10 +33,15 @@ GameView::GameView(QWidget *parent)
     , m_minVisionRadius(400.0)     // 进一步增大最小视野半径，开局更大视野
     , m_maxVisionRadius(600.0)     // 增大最大视野范围
     , m_scaleUpRatio(1.8)          // 稍微增加缩放比例，但不要太快
+    , m_aiDebugWidget(nullptr)
 {
     initializeView();
     initializePlayer();
     setupConnections();
+    
+    // 初始化AI调试窗口
+    m_aiDebugWidget = new AIDebugWidget(nullptr, this);
+    m_aiDebugWidget->hide(); // 默认隐藏
 }
 
 GameView::~GameView()
@@ -41,6 +49,10 @@ GameView::~GameView()
     if (m_inputTimer) {
         m_inputTimer->stop();
         delete m_inputTimer;
+    }
+    
+    if (m_aiDebugWidget) {
+        delete m_aiDebugWidget;
     }
     
     if (m_gameManager) {
@@ -77,6 +89,13 @@ void GameView::initializeView()
     GameManager::Config config;
     config.gameBorder = Border(-3000, 3000, -3000, 3000); // 6000x6000的游戏边界
     m_gameManager = new GameManager(scene, config, this);
+    
+    // 更新AI调试窗口的GameManager引用
+    if (m_aiDebugWidget) {
+        delete m_aiDebugWidget;
+        m_aiDebugWidget = new AIDebugWidget(m_gameManager, this);
+        m_aiDebugWidget->hide();
+    }
     
     // 创建输入处理定时器
     m_inputTimer = new QTimer(this);
@@ -598,12 +617,139 @@ QVector<CloneBall*> GameView::getAllPlayerBalls() const
     // 获取游戏管理器中的所有玩家球
     QVector<CloneBall*> players = m_gameManager->getPlayers();
     for (CloneBall* player : players) {
-        if (player && !player->isRemoved() && player->teamId() == 0) { // 只获取team 0的球
+        if (player && !player->isRemoved()) {
             allBalls.append(player);
         }
     }
     
     return allBalls;
+}
+
+// AI调试功能实现
+void GameView::showAIDebugConsole()
+{
+    if (m_aiDebugWidget) {
+        if (m_gameManager) {
+            m_aiDebugWidget->setParent(nullptr); // 独立窗口
+            m_aiDebugWidget->show();
+            m_aiDebugWidget->raise();
+            m_aiDebugWidget->activateWindow();
+        }
+    }
+}
+
+void GameView::toggleAIDebugConsole()
+{
+    if (m_aiDebugWidget) {
+        if (m_aiDebugWidget->isVisible()) {
+            m_aiDebugWidget->hide();
+        } else {
+            showAIDebugConsole();
+        }
+    }
+}
+
+// 重写AI控制函数以集成调试功能
+void GameView::addAIPlayer()
+{
+    if (!m_gameManager) return;
+    
+    static int aiPlayerCount = 1;
+    QString aiName = QString("AI-Player-%1").arg(aiPlayerCount++);
+    
+    // 使用GameManager添加AI玩家
+    bool success = m_gameManager->addAIPlayer(0, aiPlayerCount, "");
+    
+    if (success && m_aiDebugWidget) {
+        // 从GameManager获取最新添加的AI
+        auto aiPlayers = m_gameManager->getAIPlayers();
+        if (!aiPlayers.isEmpty()) {
+            auto lastAI = aiPlayers.last();
+            m_aiDebugWidget->addAIPlayer(lastAI);
+        }
+    }
+}
+
+void GameView::addRLAIPlayer()
+{
+    if (!m_gameManager) return;
+    
+    static int rlAiPlayerCount = 1;
+    QString aiName = QString("RL-AI-Player-%1").arg(rlAiPlayerCount++);
+    
+    // 使用默认的RL模型路径
+    QString modelPath = "assets/ai_models/default_rl_model.onnx";
+    bool success = m_gameManager->addAIPlayer(0, 1000 + rlAiPlayerCount, modelPath);
+    
+    if (success && m_aiDebugWidget) {
+        auto aiPlayers = m_gameManager->getAIPlayers();
+        if (!aiPlayers.isEmpty()) {
+            auto lastAI = aiPlayers.last();
+            m_aiDebugWidget->addAIPlayer(lastAI);
+        }
+    }
+}
+
+void GameView::startAllAI()
+{
+    if (m_gameManager) {
+        m_gameManager->startAllAI();
+    }
+}
+
+void GameView::stopAllAI()
+{
+    if (m_gameManager) {
+        m_gameManager->stopAllAI();
+    }
+}
+
+void GameView::removeAllAI()
+{
+    if (m_gameManager) {
+        m_gameManager->removeAllAI();
+        
+        if (m_aiDebugWidget) {
+            m_aiDebugWidget->clearAllAI();
+        }
+    }
+}
+
+float GameView::getTotalPlayerScore() const
+{
+    if (!m_gameManager) return 0.0f;
+    
+    float totalScore = 0.0f;
+    QVector<CloneBall*> allBalls = getAllPlayerBalls();
+    
+    for (CloneBall* ball : allBalls) {
+        if (ball && !ball->isRemoved()) {
+            totalScore += ball->radius() * ball->radius(); // 以面积计算分数
+        }
+    }
+    
+    return totalScore;
+}
+
+void GameView::drawBackground(QPainter *painter, const QRectF &rect)
+{
+    // 绘制网格背景
+    painter->fillRect(rect, QColor(240, 248, 255)); // 淡蓝色背景
+    
+    painter->setPen(QPen(QColor(220, 220, 220), 1));
+    
+    // 绘制网格线
+    const int gridSize = 50;
+    int startX = static_cast<int>(rect.left() / gridSize) * gridSize;
+    int startY = static_cast<int>(rect.top() / gridSize) * gridSize;
+    
+    for (int x = startX; x < rect.right(); x += gridSize) {
+        painter->drawLine(x, rect.top(), x, rect.bottom());
+    }
+    
+    for (int y = startY; y < rect.bottom(); y += gridSize) {
+        painter->drawLine(rect.left(), y, rect.right(), y);
+    }
 }
 
 QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) const
@@ -612,80 +758,20 @@ QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) c
         return QPointF(0, 0);
     }
     
-    // GoBigger风格：根据质量计算加权质心
-    float totalScore = 0;
-    QPointF weightedSum(0, 0);
+    QPointF centroid(0, 0);
+    qreal totalMass = 0.0;
     
     for (CloneBall* ball : balls) {
         if (ball && !ball->isRemoved()) {
-            float score = ball->score();
-            QPointF pos = ball->pos();
-            weightedSum += pos * score;
-            totalScore += score;
+            qreal mass = ball->radius() * ball->radius(); // 使用面积作为质量
+            centroid += ball->pos() * mass;
+            totalMass += mass;
         }
     }
     
-    if (totalScore > 0) {
-        return weightedSum / totalScore;
-    } else {
-        return balls.first()->pos(); // 备选方案
-    }
-}
-
-// ============ 视野裁剪优化实现（已禁用以提升性能）============
-
-/*
-QRectF GameView::getVisibleWorldRect() const
-{
-    // 获取当前视图在场景中的可见矩形区域
-    QRect viewRect = viewport()->rect();
-    QPolygonF scenePolygon = mapToScene(viewRect);
-    QRectF sceneRect = scenePolygon.boundingRect();
-    
-    // 扩大一点边界，确保边缘对象正确处理
-    qreal margin = 200.0;
-    sceneRect.adjust(-margin, -margin, margin, margin);
-    
-    return sceneRect;
-}
-
-void GameView::updateVisibleItems()
-{
-    // 功能已禁用，避免额外的性能开销
-    return;
-}
-*/
-
-// ============ 渲染优化实现（简化版）============
-
-void GameView::drawBackground(QPainter *painter, const QRectF &rect)
-{
-    // 简单绘制背景，移除额外的剪裁处理
-    QGraphicsView::drawBackground(painter, rect);
-}
-
-float GameView::getTotalPlayerScore() const
-{
-    if (!m_gameManager || !m_mainPlayer) {
-        return 0.0f;
+    if (totalMass > 0) {
+        centroid /= totalMass;
     }
     
-    // 获取主玩家的团队ID和玩家ID
-    int teamId = m_mainPlayer->teamId();
-    int playerId = m_mainPlayer->playerId();
-    
-    // 遍历所有球，找到属于主玩家的所有分身球
-    QVector<BaseBall*> allBalls = m_gameManager->getAllBalls();
-    float totalScore = 0.0f;
-    
-    for (BaseBall* ball : allBalls) {
-        if (ball && !ball->isRemoved() && ball->ballType() == BaseBall::CLONE_BALL) {
-            CloneBall* cloneBall = static_cast<CloneBall*>(ball);
-            if (cloneBall->teamId() == teamId && cloneBall->playerId() == playerId) {
-                totalScore += cloneBall->score();
-            }
-        }
-    }
-    
-    return totalScore;
+    return centroid;
 }

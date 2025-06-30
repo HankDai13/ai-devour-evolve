@@ -33,11 +33,31 @@ int main(int argc, char *argv[])
     gameMenu->addSeparator();
     QAction *exitAction = gameMenu->addAction("退出");
     
-    // 连接菜单动作
+    // 创建AI菜单
+    QMenu *aiMenu = menuBar->addMenu("AI");
+    QAction *addAIAction = aiMenu->addAction("添加AI玩家");
+    QAction *addRLAIAction = aiMenu->addAction("添加RL-AI玩家");
+    aiMenu->addSeparator();
+    QAction *startAllAIAction = aiMenu->addAction("启动所有AI");
+    QAction *stopAllAIAction = aiMenu->addAction("停止所有AI");
+    QAction *removeAllAIAction = aiMenu->addAction("移除所有AI");
+    aiMenu->addSeparator();
+    QAction *showDebugAction = aiMenu->addAction("显示AI调试控制台");
+    showDebugAction->setShortcut(QKeySequence("F12"));
+    
+    // 连接游戏菜单动作
     QObject::connect(startAction, &QAction::triggered, gameView, &GameView::startGame);
     QObject::connect(pauseAction, &QAction::triggered, gameView, &GameView::pauseGame);
     QObject::connect(resetAction, &QAction::triggered, gameView, &GameView::resetGame);
     QObject::connect(exitAction, &QAction::triggered, &app, &QApplication::quit);
+    
+    // 连接AI菜单动作
+    QObject::connect(addAIAction, &QAction::triggered, gameView, &GameView::addAIPlayer);
+    QObject::connect(addRLAIAction, &QAction::triggered, gameView, &GameView::addRLAIPlayer);
+    QObject::connect(startAllAIAction, &QAction::triggered, gameView, &GameView::startAllAI);
+    QObject::connect(stopAllAIAction, &QAction::triggered, gameView, &GameView::stopAllAI);
+    QObject::connect(removeAllAIAction, &QAction::triggered, gameView, &GameView::removeAllAI);
+    QObject::connect(showDebugAction, &QAction::triggered, gameView, &GameView::showAIDebugConsole);
     
     // 创建帮助菜单
     QMenu *helpMenu = menuBar->addMenu("帮助");

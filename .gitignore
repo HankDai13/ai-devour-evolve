@@ -62,3 +62,8 @@ env/
 # 忽略系统文件
 .DS_Store
 Thumbs.db
+
+scripts/models/auto_save_*.zip
+scripts/checkpoints/model_*_steps.zip
+scripts/checkpoints/stats_*.json
+scripts/checkpoints/checkpoint_*.zip

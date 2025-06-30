@@ -85,6 +85,43 @@ void CloneBall::setMoveDirection(const QVector2D& direction)
     }
 }
 
+// AI控制接口实现
+void CloneBall::setTargetDirection(const QPointF& direction)
+{
+    QVector2D vec2d(direction.x(), direction.y());
+    setMoveDirection(vec2d);
+}
+
+QPointF CloneBall::getVelocity() const
+{
+    return QPointF(m_velocity.x(), m_velocity.y());
+}
+
+void CloneBall::split()
+{
+    if (canSplit()) {
+        QVector2D splitDirection = m_moveDirection.length() > 0.01 ? m_moveDirection : QVector2D(1, 0);
+        auto newBalls = performSplit(splitDirection);
+        if (!newBalls.isEmpty()) {
+            emit splitPerformed(this, newBalls);
+        }
+    }
+}
+
+void CloneBall::ejectSpore(const QPointF& direction)
+{
+    if (canEject()) {
+        QVector2D ejectDir(direction.x(), direction.y());
+        if (ejectDir.length() < 0.01) {
+            ejectDir = m_moveDirection.length() > 0.01 ? m_moveDirection : QVector2D(1, 0);
+        }
+        SporeBall* spore = ejectSpore(ejectDir);
+        if (spore) {
+            emit sporeEjected(this, spore);
+        }
+    }
+}
+
 QVector<CloneBall*> CloneBall::performSplit(const QVector2D& direction)
 {
     QVector<CloneBall*> newBalls;

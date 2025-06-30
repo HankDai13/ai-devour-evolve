@@ -45,6 +45,11 @@ public:
     
     // 玩家操作
     void setMoveDirection(const QVector2D& direction);
+    // AI控制接口
+    void setTargetDirection(const QPointF& direction);
+    QPointF getVelocity() const;
+    void split(); // 简化的分裂接口
+    void ejectSpore(const QPointF& direction); // 简化的孢子喷射接口
     void applyGoBiggerMovement(const QVector2D& playerInput, const QVector2D& centerForce); // 新增：GoBigger风格移动
     QVector<CloneBall*> performSplit(const QVector2D& direction);
     QVector<CloneBall*> performThornsSplit(const QVector2D& direction, int totalPlayerBalls); // 新增：吃荆棘球后的特殊分裂

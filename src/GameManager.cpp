@@ -5,6 +5,7 @@
 #include "ThornsBall.h"
 #include "GoBiggerConfig.h"
 #include "QuadTree.h"
+#include "SimpleAIPlayer.h"
 #include <QGraphicsScene>
 #include <QDebug>
 #include <cmath>
@@ -21,6 +22,7 @@ GameManager::GameManager(QGraphicsScene* scene, const Config& config, QObject* p
     , m_nextBallId(1)
     , m_foodRefreshFrameCount(0)
     , m_thornsRefreshFrameCount(0)
+    , m_defaultAIModelPath("assets/ai_models/exported_models/ai_model_traced.pt")
 {
     // 初始化四叉树 - 使用游戏边界
     QRectF bounds(m_config.gameBorder.minx, m_config.gameBorder.miny,
@@ -33,6 +35,15 @@ GameManager::GameManager(QGraphicsScene* scene, const Config& config, QObject* p
 
 GameManager::~GameManager()
 {
+    // 清理AI玩家
+    for (auto aiPlayer : m_aiPlayers) {
+        if (aiPlayer) {
+            aiPlayer->stopAI();
+            delete aiPlayer;
+        }
+    }
+    m_aiPlayers.clear();
+    
     clearAllBalls();
     
     if (m_gameTimer) {
@@ -924,4 +935,120 @@ QVector<CloneBall*> GameManager::getPlayerBalls(int teamId, int playerId) const
     }
     
     return playerBalls;
+}
+
+// AI玩家管理实现
+bool GameManager::addAIPlayer(int teamId, int playerId, const QString& aiModelPath)
+{
+    // 检查是否已经存在相同的AI玩家
+    for (auto aiPlayer : m_aiPlayers) {
+        if (aiPlayer && aiPlayer->getPlayerBall() && 
+            aiPlayer->getPlayerBall()->teamId() == teamId && 
+            aiPlayer->getPlayerBall()->playerId() == playerId) {
+            qWarning() << "AI player already exists for team" << teamId << "player" << playerId;
+            return false;
+        }
+    }
+    
+    // 创建新的CloneBall作为AI玩家
+    QPointF startPos = generateRandomPosition();
+    CloneBall* playerBall = new CloneBall(
+        getNextBallId(),
+        startPos,
+        m_config.gameBorder,
+        teamId,
+        playerId
+    );
+    
+    // 添加到游戏中
+    addBall(playerBall);
+    
+    // 创建AI控制器
+    auto aiPlayer = new GoBigger::AI::SimpleAIPlayer(playerBall, this);
+    
+    // 加载AI模型
+    if (!aiModelPath.isEmpty()) {
+        if (!aiPlayer->loadAIModel(aiModelPath)) {
+            qWarning() << "Failed to load AI model from" << aiModelPath << "for player" << teamId << playerId;
+            qWarning() << "Using default heuristic strategy instead";
+        } else {
+            qDebug() << "Successfully loaded AI model from" << aiModelPath;
+            // 设置为模型策略
+            aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::MODEL_BASED);
+        }
+    } else {
+        qDebug() << "No AI model path specified, using heuristic strategies";
+        // 使用默认的食物猎手策略
+        aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER);
+    }
+    
+    m_aiPlayers.append(aiPlayer);
+    
+    qDebug() << "Successfully added AI player for team" << teamId << "player" << playerId 
+             << "at position" << startPos;
+    
+    return true;
+}
+
+void GameManager::removeAIPlayer(int teamId, int playerId)
+{
+    for (int i = 0; i < m_aiPlayers.size(); ++i) {
+        auto aiPlayer = m_aiPlayers[i];
+        if (aiPlayer && aiPlayer->getPlayerBall() && 
+            aiPlayer->getPlayerBall()->teamId() == teamId && 
+            aiPlayer->getPlayerBall()->playerId() == playerId) {
+            
+            aiPlayer->stopAI();
+            CloneBall* playerBall = aiPlayer->getPlayerBall();
+            if (playerBall) {
+                removeBall(playerBall);
+            }
+            
+            m_aiPlayers.removeAt(i);
+            delete aiPlayer;
+            
+            qDebug() << "Removed AI player for team" << teamId << "player" << playerId;
+            return;
+        }
+    }
+    
+    qWarning() << "AI player not found for team" << teamId << "player" << playerId;
+}
+
+void GameManager::startAllAI()
+{
+    for (auto aiPlayer : m_aiPlayers) {
+        if (aiPlayer) {
+            aiPlayer->startAI();
+        }
+    }
+    qDebug() << "Started" << m_aiPlayers.size() << "AI players";
+}
+
+void GameManager::stopAllAI()
+{
+    for (auto aiPlayer : m_aiPlayers) {
+        if (aiPlayer) {
+            aiPlayer->stopAI();
+        }
+    }
+    qDebug() << "Stopped" << m_aiPlayers.size() << "AI players";
+}
+
+void GameManager::removeAllAI()
+{
+    // 停止所有AI
+    stopAllAI();
+    
+    // 移除所有AI球体
+    for (auto aiPlayer : m_aiPlayers) {
+        if (aiPlayer && aiPlayer->getPlayerBall()) {
+            CloneBall* playerBall = aiPlayer->getPlayerBall();
+            removeBall(playerBall);
+        }
+        delete aiPlayer;
+    }
+    
+    m_aiPlayers.clear();
+    qDebug() << "Removed all AI players";
 }

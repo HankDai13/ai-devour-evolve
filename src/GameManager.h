@@ -11,10 +11,12 @@
 #include "GoBiggerConfig.h"
 #include "QuadTree.h"
 
+// Forward declarations
 class CloneBall;
 class FoodBall;
 class SporeBall;
 class ThornsBall;
+namespace GoBigger { namespace AI { class SimpleAIPlayer; } }
 
 class GameManager : public QObject
 {
@@ -89,6 +91,14 @@ public:
     const Config& config() const { return m_config; }
     int getCurrentBallId() const { return m_nextBallId; }
     
+    // AI玩家管理
+    bool addAIPlayer(int teamId, int playerId, const QString& aiModelPath = "");
+    void removeAIPlayer(int teamId, int playerId);
+    void removeAllAI();
+    void startAllAI();
+    void stopAllAI();
+    QVector<GoBigger::AI::SimpleAIPlayer*> getAIPlayers() const { return m_aiPlayers; }
+    
     // 统计信息
     int getFoodCount() const { return m_foodBalls.size(); }
     int getThornsCount() const { return m_thornsBalls.size(); }
@@ -129,6 +139,10 @@ private:
     QVector<SporeBall*> m_sporeBalls;
     QVector<ThornsBall*> m_thornsBalls;
     QHash<int, BaseBall*> m_allBalls;
+    
+    // AI玩家管理
+    QVector<GoBigger::AI::SimpleAIPlayer*> m_aiPlayers;
+    QString m_defaultAIModelPath;
     
     int m_nextBallId;
     
