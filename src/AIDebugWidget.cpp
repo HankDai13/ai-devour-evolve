@@ -239,18 +239,47 @@ void AIDebugWidget::updateAIStatus() {
         }
         
         QString aiName = QString("AI-%1").arg(i + 1);
-        if (ai->getPlayerBall()) {
-            aiName = QString("AI-T%1P%2").arg(ai->getPlayerBall()->teamId()).arg(ai->getPlayerBall()->playerId());
+        QString scoreInfo = "N/A";
+        QString ballColor = "N/A";
+        
+        if (ai->getPlayerBall() && !ai->getPlayerBall()->isRemoved()) {
+            CloneBall* ball = ai->getPlayerBall();
+            aiName = QString("AI-T%1P%2").arg(ball->teamId()).arg(ball->playerId());
+            scoreInfo = QString("Score: %1").arg(static_cast<int>(ball->score()));
+            
+            // 根据teamId生成颜色信息
+            ballColor = QString("Team %1").arg(ball->teamId());
+            
+            // 简单的颜色映射
+            switch (ball->teamId() % 8) {
+                case 0: ballColor += " (Blue)"; break;
+                case 1: ballColor += " (Red)"; break;
+                case 2: ballColor += " (Green)"; break;
+                case 3: ballColor += " (Yellow)"; break;
+                case 4: ballColor += " (Purple)"; break;
+                case 5: ballColor += " (Orange)"; break;
+                case 6: ballColor += " (Cyan)"; break;
+                default: ballColor += " (Pink)"; break;
+            }
+        } else {
+            scoreInfo = "Ball Removed";
+            ballColor = "N/A";
+            status = "Destroyed"; // AI球被吃掉后的状态
         }
         
-        QString itemText = QString("%1 [%2] (%3)").arg(aiName, status, strategy);
+        // 格式：AI名称 [状态] (策略) | 分数 | 颜色
+        QString itemText = QString("%1 [%2] (%3) | %4 | Color: %5")
+                           .arg(aiName, status, strategy, scoreInfo, ballColor);
         QListWidgetItem* item = new QListWidgetItem(itemText);
         item->setData(Qt::UserRole, QVariant::fromValue(ai));
         
-        if (ai->isAIActive()) {
-            item->setBackground(QBrush(QColor(200, 255, 200))); // 浅绿色
+        // 根据状态设置背景色
+        if (ai->getPlayerBall() && ai->getPlayerBall()->isRemoved()) {
+            item->setBackground(QBrush(QColor(128, 128, 128))); // 灰色：已被吃掉
+        } else if (ai->isAIActive()) {
+            item->setBackground(QBrush(QColor(200, 255, 200))); // 浅绿色：活跃
         } else {
-            item->setBackground(QBrush(QColor(255, 200, 200))); // 浅红色
+            item->setBackground(QBrush(QColor(255, 200, 200))); // 浅红色：非活跃
         }
         
         m_aiPlayersList->addItem(item);

@@ -33,6 +33,8 @@ SimpleAIPlayer::SimpleAIPlayer(CloneBall* playerBall, QObject* parent)
     // 监听玩家球被销毁的信号
     if (m_playerBall) {
         connect(m_playerBall, &QObject::destroyed, this, &SimpleAIPlayer::onPlayerBallDestroyed);
+        // 监听球被移除的信号
+        connect(m_playerBall, &BaseBall::ballRemoved, this, &SimpleAIPlayer::onPlayerBallRemoved);
         // 监听分裂信号
         connect(m_playerBall, &CloneBall::splitPerformed, this, &SimpleAIPlayer::onSplitPerformed);
         
@@ -141,6 +143,18 @@ void SimpleAIPlayer::onPlayerBallDestroyed() {
     stopAI();
 }
 
+void SimpleAIPlayer::onPlayerBallRemoved() {
+    qDebug() << "Player ball removed/eaten, stopping AI";
+    // 主球被移除（被吃掉），停止AI
+    if (m_playerBall) {
+        m_playerBall = nullptr;
+    }
+    stopAI();
+    
+    // 通知外部AI玩家已被销毁
+    emit aiPlayerDestroyed(this);
+}
+
 AIAction SimpleAIPlayer::makeRandomDecision() {
     // 随机移动策略
     float dx = (QRandomGenerator::global()->generateDouble() - 0.5f) * 2.0f; // [-1, 1]
@@ -162,83 +176,109 @@ AIAction SimpleAIPlayer::makeRandomDecision() {
 AIAction SimpleAIPlayer::makeFoodHunterDecision() {
     QPointF playerPos = m_playerBall->pos();
     float playerRadius = m_playerBall->radius();
+    float playerScore = m_playerBall->score();
     
-    // 首先检查威胁 - 大的玩家球和荆棘球
-    auto nearbyPlayers = getNearbyPlayers(120.0f);
-    auto nearbyBalls = getNearbyBalls(120.0f);
+    // 扩大威胁检测范围
+    auto nearbyPlayers = getNearbyPlayers(200.0f);
+    auto nearbyBalls = getNearbyBalls(150.0f);
     
-    // 检查需要避开的威胁
+    // 1. 首先检查紧急威胁 - 需要立即逃跑的情况
+    QVector2D escapeDirection(0, 0);
+    int threatCount = 0;
+    float maxThreatLevel = 0;
+    
     for (auto player : nearbyPlayers) {
-        if (player != m_playerBall && player->radius() > playerRadius * 1.2f) {
+        if (player != m_playerBall && player->teamId() != m_playerBall->teamId()) {
             float distance = QPointF(player->pos() - playerPos).manhattanLength();
-            if (distance < 80.0f) { // 太近了，需要逃跑
-                QPointF awayDirection = playerPos - player->pos();
-                float length = std::sqrt(awayDirection.x() * awayDirection.x() + awayDirection.y() * awayDirection.y());
+            float threatScore = player->score();
+            float radiusRatio = player->radius() / playerRadius;
+            
+            // 威胁级别计算：考虑大小比例和距离
+            if (threatScore > playerScore * 1.15f) { // 对方比我们大15%以上
+                float threatLevel = (threatScore / playerScore) / (distance + 1.0f); // 距离越近威胁越大
                 
-                if (length > 0.1f) {
-                    float dx = awayDirection.x() / length;
-                    float dy = awayDirection.y() / length;
-                    qDebug() << "Avoiding threat! Distance:" << distance;
-                    return AIAction(dx, dy, ActionType::MOVE);
+                if (distance < 120.0f) { // 危险距离内
+                    QPointF awayDirection = playerPos - player->pos();
+                    float length = std::sqrt(awayDirection.x() * awayDirection.x() + awayDirection.y() * awayDirection.y());
+                    
+                    if (length > 0.1f) {
+                        QVector2D escapeVec(awayDirection.x() / length, awayDirection.y() / length);
+                        escapeDirection += escapeVec * threatLevel; // 加权逃跑方向
+                        threatCount++;
+                        maxThreatLevel = std::max(maxThreatLevel, threatLevel);
+                    }
                 }
             }
         }
     }
     
-    // 检查荆棘球威胁/机会
+    // 如果有威胁，立即逃跑
+    if (threatCount > 0) {
+        escapeDirection = escapeDirection.normalized();
+        qDebug() << "FOOD_HUNTER: Escaping from" << threatCount << "threats, max threat level:" << maxThreatLevel;
+        
+        // 高威胁时考虑分裂逃跑
+        if (maxThreatLevel > 2.0f && m_playerBall->canSplit() && playerScore > 20.0f) {
+            return AIAction(escapeDirection.x(), escapeDirection.y(), ActionType::SPLIT);
+        }
+        
+        return AIAction(escapeDirection.x(), escapeDirection.y(), ActionType::MOVE);
+    }
+    
+    // 2. 检查荆棘球威胁/机会
     for (auto ball : nearbyBalls) {
         if (ball->ballType() == BaseBall::THORNS_BALL) {
             float distance = QPointF(ball->pos() - playerPos).manhattanLength();
             float thornsScore = ball->score();
             
             // 智能荆棘策略
-            if (m_playerBall->score() > thornsScore * 1.2f) {
-                // 我们比荆棘大，可以考虑吃它
-                bool hasThreatNearby = false;
+            if (playerScore > thornsScore * 1.3f) {
+                // 我们比荆棘大足够多，检查周围是否安全
+                bool safeToEat = true;
                 for (auto player : nearbyPlayers) {
-                    if (player != m_playerBall && player->radius() > playerRadius * 1.1f) {
+                    if (player != m_playerBall && player->teamId() != m_playerBall->teamId() && 
+                        player->score() > playerScore * 1.1f) {
                         float threatDistance = QPointF(player->pos() - ball->pos()).manhattanLength();
-                        if (threatDistance < 100.0f) {
-                            hasThreatNearby = true;
+                        if (threatDistance < 150.0f) {
+                            safeToEat = false;
                             break;
                         }
                     }
                 }
                 
-                if (!hasThreatNearby && distance < 80.0f) {
-                    // 安全且距离合适，可以吃荆棘
+                if (safeToEat && distance < 100.0f) {
                     QPointF direction = ball->pos() - playerPos;
                     float length = std::sqrt(direction.x() * direction.x() + direction.y() * direction.y());
                     
                     if (length > 0.1f) {
                         float dx = direction.x() / length;
                         float dy = direction.y() / length;
-                        qDebug() << "Going for thorns! My score:" << m_playerBall->score() 
+                        qDebug() << "FOOD_HUNTER: Going for safe thorns! My score:" << playerScore 
                                 << "Thorns score:" << thornsScore;
                         return AIAction(dx, dy, ActionType::MOVE);
                     }
                 }
-            } else if (distance < 60.0f) {
-                // 荆棘比我们大或相近，需要避开
+            } else if (distance < 80.0f) {
+                // 荆棘比我们大，需要避开
                 QPointF awayDirection = playerPos - ball->pos();
                 float length = std::sqrt(awayDirection.x() * awayDirection.x() + awayDirection.y() * awayDirection.y());
                 
                 if (length > 0.1f) {
                     float dx = awayDirection.x() / length;
                     float dy = awayDirection.y() / length;
-                    qDebug() << "Avoiding dangerous thorns! Distance:" << distance;
+                    qDebug() << "FOOD_HUNTER: Avoiding dangerous thorns! Distance:" << distance;
                     return AIAction(dx, dy, ActionType::MOVE);
                 }
             }
         }
     }
     
-    // 寻找最近的食物（只有在安全时）
-    auto nearbyFood = getNearbyFood(250.0f);
+    // 3. 在安全情况下寻找食物
+    auto nearbyFood = getNearbyFood(300.0f); // 扩大食物搜索范围
     
     if (!nearbyFood.empty()) {
         FoodBall* targetFood = nullptr;
-        float minDistance = std::numeric_limits<float>::max();
+        float bestScore = -1.0f; // 使用评分而不是简单距离
         
         for (auto food : nearbyFood) {
             QPointF foodPos = food->pos();
@@ -246,20 +286,33 @@ AIAction SimpleAIPlayer::makeFoodHunterDecision() {
             
             // 检查到食物的路径是否安全
             bool pathSafe = true;
+            float minThreatDistance = std::numeric_limits<float>::max();
+            
             for (auto player : nearbyPlayers) {
-                if (player != m_playerBall && player->radius() > playerRadius * 1.2f) {
+                if (player != m_playerBall && player->teamId() != m_playerBall->teamId() && 
+                    player->score() > playerScore * 1.1f) {
                     QPointF threatPos = player->pos();
-                    // 简单的路径安全检查：食物不能在威胁附近
-                    if (QPointF(foodPos - threatPos).manhattanLength() < 50.0f) {
+                    float threatToFoodDist = QPointF(foodPos - threatPos).manhattanLength();
+                    float threatToPlayerDist = QPointF(threatPos - playerPos).manhattanLength();
+                    
+                    minThreatDistance = std::min(minThreatDistance, threatToFoodDist);
+                    
+                    // 食物不能在威胁附近，路径也不能经过威胁
+                    if (threatToFoodDist < 60.0f || (threatToPlayerDist < distance && threatToFoodDist < 80.0f)) {
                         pathSafe = false;
                         break;
                     }
                 }
             }
             
-            if (pathSafe && distance < minDistance) {
-                minDistance = distance;
-                targetFood = food;
+            if (pathSafe) {
+                // 评分：食物价值 / 距离，距离威胁越远越好
+                float score = (food->score() / (distance + 1.0f)) * (minThreatDistance / 100.0f);
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    targetFood = food;
+                }
             }
         }
         
@@ -271,13 +324,34 @@ AIAction SimpleAIPlayer::makeFoodHunterDecision() {
             if (length > 0.1f) {
                 float dx = direction.x() / length;
                 float dy = direction.y() / length;
-                // qDebug() << "Moving to food, distance:" << length;
                 return AIAction(dx, dy, ActionType::MOVE);
             }
         }
     }
     
-    // 如果没有安全的食物，进行探索性移动
+    // 4. 如果没有安全的食物，寻找更安全的区域
+    // 计算远离所有威胁的方向
+    QVector2D safeDirection(0, 0);
+    for (auto player : nearbyPlayers) {
+        if (player != m_playerBall && player->teamId() != m_playerBall->teamId() && 
+            player->score() > playerScore * 1.1f) {
+            QPointF awayDirection = playerPos - player->pos();
+            float distance = QPointF(player->pos() - playerPos).manhattanLength();
+            
+            if (distance < 200.0f) {
+                float weight = (200.0f - distance) / 200.0f; // 距离越近权重越大
+                safeDirection += QVector2D(awayDirection.x(), awayDirection.y()).normalized() * weight;
+            }
+        }
+    }
+    
+    if (safeDirection.length() > 0.1f) {
+        safeDirection = safeDirection.normalized();
+        qDebug() << "FOOD_HUNTER: Moving to safer area";
+        return AIAction(safeDirection.x(), safeDirection.y(), ActionType::MOVE);
+    }
+    
+    // 5. 最后选择：随机探索
     return makeRandomDecision();
 }
 

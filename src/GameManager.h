@@ -16,7 +16,18 @@ class CloneBall;
 class FoodBall;
 class SporeBall;
 class ThornsBall;
-namespace GoBigger { namespace AI { class SimpleAIPlayer; } }
+namespace GoBigger { 
+    namespace AI { 
+        class SimpleAIPlayer;
+        // AI策略枚举前置声明
+        enum class AIStrategy {
+            RANDOM,      // 随机移动
+            FOOD_HUNTER, // 寻找食物
+            AGGRESSIVE,  // 攻击性策略
+            MODEL_BASED  // 基于模型的策略
+        };
+    } 
+}
 
 class GameManager : public QObject
 {
@@ -93,10 +104,16 @@ public:
     
     // AI玩家管理
     bool addAIPlayer(int teamId, int playerId, const QString& aiModelPath = "");
+    // 新增：支持指定AI策略的方法
+    bool addAIPlayerWithStrategy(int teamId, int playerId, 
+                                 GoBigger::AI::AIStrategy strategy,
+                                 const QString& aiModelPath = "");
     void removeAIPlayer(int teamId, int playerId);
-    void removeAllAI();
     void startAllAI();
     void stopAllAI();
+    void removeAllAI();
+    
+    // AI玩家访问方法
     QVector<GoBigger::AI::SimpleAIPlayer*> getAIPlayers() const { return m_aiPlayers; }
     
     // 统计信息
@@ -122,6 +139,7 @@ private slots:
     void handleSporeEjected(CloneBall* ball, SporeBall* spore);
     void handleThornsCollision(ThornsBall* thorns, CloneBall* ball);
     void handleThornsEaten(CloneBall* ball, ThornsBall* thorns); // 新增：处理吃荆棘球
+    void handleAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer); // 新增：处理AI玩家被销毁
 
 private:
     QGraphicsScene* m_scene;

@@ -35,6 +35,7 @@ public:
     // AI玩家控制
     void addAIPlayer();
     void addRLAIPlayer();
+    void addAIPlayerWithDialog();  // 新增：通过对话框添加AI玩家
     void startAllAI();
     void stopAllAI();
     void removeAllAI();
@@ -60,6 +61,7 @@ private slots:
     void onGameReset();
     void onPlayerAdded(CloneBall* player);
     void onPlayerRemoved(CloneBall* player);
+    void onAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer); // 新增：处理AI玩家销毁
 
 private:
     GameManager* m_gameManager;

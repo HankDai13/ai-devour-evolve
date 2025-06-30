@@ -827,32 +827,45 @@ void CloneBall::applyCenteringForce()
         return;
     }
     
-    // 计算中心位置（所有分裂球的质心）
+    // 计算质心位置（加权平均，大球权重更大）
     QPointF centerPos(0, 0);
-    float totalScore = 0;
+    float totalWeight = 0;
     
     for (CloneBall* ball : targetBalls) {
-        centerPos += ball->pos() * ball->score();
-        totalScore += ball->score();
+        float weight = ball->score(); // 使用分数作为权重
+        centerPos += ball->pos() * weight;
+        totalWeight += weight;
     }
     centerPos += pos() * m_score;
-    totalScore += m_score;
+    totalWeight += m_score;
     
-    centerPos /= totalScore;
+    centerPos /= totalWeight;
     
-    // 计算向心力
-    QPointF direction = centerPos - pos();
-    qreal distance = std::sqrt(direction.x() * direction.x() + direction.y() * direction.y());
+    // 计算到质心的距离向量
+    QVector2D toCenter = QVector2D(centerPos - pos());
+    float distance = toCenter.length();
     
-    if (distance > radius() * 0.5) { // 只有距离中心超过半个半径才应用向心力
-        // 温和的向心力，基于距离
-        qreal forceStrength = std::min(0.5, distance / (radius() * 20)); // 更温和的力度
-        QVector2D centeringForce(direction.x() / distance * forceStrength, 
-                                direction.y() / distance * forceStrength);
+    // 只有当距离超过最小阈值时才应用向心力
+    float minDistance = radius() * 1.5f; // 球半径的1.5倍
+    if (distance > minDistance) {
+        // GoBigger风格的非线性向心力计算
+        // 力度随距离非线性增加，但有最大限制
+        float normalizedDistance = std::min(1.0f, (distance - minDistance) / (radius() * 10.0f));
         
-        // 将向心力添加到当前速度（很小的增量）
-        QVector2D currentVel = velocity();
-        setVelocity(currentVel + centeringForce * 0.1); // 进一步减小影响
+        // 使用平滑的非线性函数 (类似easing function)
+        float easeInOut = normalizedDistance * normalizedDistance * (3.0f - 2.0f * normalizedDistance);
+        
+        // 计算力度，随时间衰减（合并时间越近，向心力越强）
+        float timeDecay = 1.0f - (float)m_frameSinceLastSplit / mergeDelayFrames;
+        float maxForce = 0.8f * timeDecay; // 最大向心力随时间递减
+        
+        float forceStrength = maxForce * easeInOut;
+        
+        // 计算向心力向量
+        QVector2D centeringForce = toCenter.normalized() * forceStrength;
+        
+        // 使用GoBigger的标准加速度系统应用向心力
+        applyGoBiggerMovement(QVector2D(0, 0), centeringForce);
     }
 }
 
@@ -870,12 +883,21 @@ void CloneBall::applyGoBiggerMovement(const QVector2D& playerInput, const QVecto
         givenAcc = normalizedInput * 30.0f; // GoBigger标准acc_weight=30
     }
     
-    // 2. 处理向心力加速度 (given_acc_center) - 减弱向心力，避免卡顿
+    // 2. 处理向心力加速度 (given_acc_center) - 优化为更平滑的力
     QVector2D centerAcc(0, 0);
     if (centerForce.length() > 0.01) {
         QVector2D normalizedCenter = centerForce.length() > 1.0f ? centerForce.normalized() : centerForce;
-        // 参考原版：given_acc_center = given_acc_center / self.radius
-        centerAcc = normalizedCenter / currentRadius * 5.0f; // 减小center_acc_weight从15到5
+        
+        // 使用GoBigger原版的向心力公式，但优化参数避免抖动
+        // 原版: given_acc_center = given_acc_center / self.radius
+        float centerWeight = 8.0f / std::max(currentRadius, 10.0f); // 半径越大，向心力越小
+        centerAcc = normalizedCenter * centerWeight;
+        
+        // 添加速度衰减，避免振荡
+        float currentSpeed = velocity().length();
+        if (currentSpeed > 50.0f) { // 如果速度过快，减弱向心力
+            centerAcc *= (50.0f / currentSpeed);
+        }
     }
     
     // 3. 计算总加速度

@@ -35,8 +35,9 @@ int main(int argc, char *argv[])
     
     // 创建AI菜单
     QMenu *aiMenu = menuBar->addMenu("AI");
-    QAction *addAIAction = aiMenu->addAction("添加AI玩家");
-    QAction *addRLAIAction = aiMenu->addAction("添加RL-AI玩家");
+    QAction *addAIAction = aiMenu->addAction("快速添加AI玩家 (食物猎手)");
+    QAction *addRLAIAction = aiMenu->addAction("快速添加RL-AI玩家");
+    QAction *addCustomAIAction = aiMenu->addAction("自定义添加AI玩家...");
     aiMenu->addSeparator();
     QAction *startAllAIAction = aiMenu->addAction("启动所有AI");
     QAction *stopAllAIAction = aiMenu->addAction("停止所有AI");
@@ -54,6 +55,7 @@ int main(int argc, char *argv[])
     // 连接AI菜单动作
     QObject::connect(addAIAction, &QAction::triggered, gameView, &GameView::addAIPlayer);
     QObject::connect(addRLAIAction, &QAction::triggered, gameView, &GameView::addRLAIPlayer);
+    QObject::connect(addCustomAIAction, &QAction::triggered, gameView, &GameView::addAIPlayerWithDialog);
     QObject::connect(startAllAIAction, &QAction::triggered, gameView, &GameView::startAllAI);
     QObject::connect(stopAllAIAction, &QAction::triggered, gameView, &GameView::stopAllAI);
     QObject::connect(removeAllAIAction, &QAction::triggered, gameView, &GameView::removeAllAI);

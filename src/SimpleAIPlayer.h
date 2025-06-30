@@ -86,10 +86,12 @@ public:
 signals:
     void actionExecuted(const AIAction& action);
     void strategyChanged(AIStrategy newStrategy);
+    void aiPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer); // 新增：AI被销毁信号
 
 private slots:
     void makeDecision();
     void onPlayerBallDestroyed();
+    void onPlayerBallRemoved();  // 新增：处理球被移除
     void onSplitPerformed(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
     void onBallDestroyed(QObject* ball);
 

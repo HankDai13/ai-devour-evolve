@@ -28,7 +28,7 @@ constexpr float SPEED_RADIUS_COEFF_B = 80.00f;      // 速度计算系数B
 
 // 分裂参数 (参考GoBigger原版)
 constexpr int SPLIT_MIN_SCORE = 3600;              // 最小分裂分数 (GoBigger标准)
-constexpr int MAX_SPLIT_COUNT = 16;                // 最大分裂数量
+constexpr int MAX_SPLIT_COUNT = 10;                // 最大分裂数量（降低以减少复杂度和bug）
 constexpr float SPLIT_BOOST_SPEED = 500.0f;        // 分裂冲刺速度 (文档标准)
 constexpr float SPLIT_COOLDOWN = 1.0f;             // 分裂冷却时间(秒)
 constexpr float MERGE_DELAY = 20.0f;               // 合并延迟时间(秒) (recombine_frame=400/20fps)

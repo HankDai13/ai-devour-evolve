@@ -962,6 +962,15 @@ bool GameManager::addAIPlayer(int teamId, int playerId, const QString& aiModelPa
     
     // 添加到游戏中
     addBall(playerBall);
+    m_players.append(playerBall);  // 重要：添加到玩家列表中
+    
+    // 连接玩家特有的信号
+    connect(playerBall, &CloneBall::splitPerformed, this, &GameManager::handlePlayerSplit);
+    connect(playerBall, &CloneBall::sporeEjected, this, &GameManager::handleSporeEjected);
+    connect(playerBall, &CloneBall::thornsEaten, this, &GameManager::handleThornsEaten);
+    
+    // 发出玩家添加信号
+    emit playerAdded(playerBall);
     
     // 创建AI控制器
     auto aiPlayer = new GoBigger::AI::SimpleAIPlayer(playerBall, this);
@@ -971,6 +980,13 @@ bool GameManager::addAIPlayer(int teamId, int playerId, const QString& aiModelPa
         if (!aiPlayer->loadAIModel(aiModelPath)) {
             qWarning() << "Failed to load AI model from" << aiModelPath << "for player" << teamId << playerId;
             qWarning() << "Using default heuristic strategy instead";
+            // 根据teamId设置不同的默认策略
+            if (teamId == 2) {
+                aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::AGGRESSIVE);
+                qDebug() << "Set aggressive strategy for RL-AI fallback";
+            } else {
+                aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER);
+            }
         } else {
             qDebug() << "Successfully loaded AI model from" << aiModelPath;
             // 设置为模型策略
@@ -978,14 +994,128 @@ bool GameManager::addAIPlayer(int teamId, int playerId, const QString& aiModelPa
         }
     } else {
         qDebug() << "No AI model path specified, using heuristic strategies";
-        // 使用默认的食物猎手策略
-        aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER);
+        // 根据teamId使用不同的默认策略
+        if (teamId == 1) {
+            aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER);
+        } else if (teamId == 2) {
+            aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::AGGRESSIVE);
+        } else {
+            aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::RANDOM);
+        }
     }
     
     m_aiPlayers.append(aiPlayer);
     
+    // 连接AI销毁信号
+    connect(aiPlayer, &GoBigger::AI::SimpleAIPlayer::aiPlayerDestroyed,
+            this, &GameManager::handleAIPlayerDestroyed);
+    
+    // 启动AI控制
+    aiPlayer->startAI();
+    
     qDebug() << "Successfully added AI player for team" << teamId << "player" << playerId 
-             << "at position" << startPos;
+             << "at position" << startPos << "and started AI";
+    
+    return true;
+}
+
+bool GameManager::addAIPlayerWithStrategy(int teamId, int playerId, 
+                                          GoBigger::AI::AIStrategy strategy,
+                                          const QString& aiModelPath)
+{
+    // 检查是否已经存在相同的AI玩家
+    for (auto aiPlayer : m_aiPlayers) {
+        if (aiPlayer && aiPlayer->getPlayerBall() && 
+            aiPlayer->getPlayerBall()->teamId() == teamId && 
+            aiPlayer->getPlayerBall()->playerId() == playerId) {
+            qWarning() << "AI player already exists for team" << teamId << "player" << playerId;
+            return false;
+        }
+    }
+    
+    // 创建新的CloneBall作为AI玩家
+    QPointF startPos = generateRandomPosition();
+    CloneBall* playerBall = new CloneBall(
+        getNextBallId(),
+        startPos,
+        m_config.gameBorder,
+        teamId,
+        playerId
+    );
+    
+    // 添加到游戏中
+    addBall(playerBall);
+    m_players.append(playerBall);  // 重要：添加到玩家列表中
+    
+    qDebug() << "Created CloneBall for AI:" 
+             << "teamId=" << teamId 
+             << "playerId=" << playerId 
+             << "position=" << startPos 
+             << "ballId=" << playerBall->ballId()
+             << "in scene=" << (playerBall->scene() != nullptr);
+    
+    // 连接玩家特有的信号
+    connect(playerBall, &CloneBall::splitPerformed, this, &GameManager::handlePlayerSplit);
+    connect(playerBall, &CloneBall::sporeEjected, this, &GameManager::handleSporeEjected);
+    connect(playerBall, &CloneBall::thornsEaten, this, &GameManager::handleThornsEaten);
+    
+    // 发出玩家添加信号
+    emit playerAdded(playerBall);
+    
+    // 创建AI控制器
+    auto aiPlayer = new GoBigger::AI::SimpleAIPlayer(playerBall, this);
+    
+    // 转换策略类型 - 从前置声明转换到实际枚举
+    GoBigger::AI::SimpleAIPlayer::AIStrategy actualStrategy;
+    switch (strategy) {
+        case GoBigger::AI::AIStrategy::RANDOM:
+            actualStrategy = GoBigger::AI::SimpleAIPlayer::AIStrategy::RANDOM;
+            break;
+        case GoBigger::AI::AIStrategy::FOOD_HUNTER:
+            actualStrategy = GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER;
+            break;
+        case GoBigger::AI::AIStrategy::AGGRESSIVE:
+            actualStrategy = GoBigger::AI::SimpleAIPlayer::AIStrategy::AGGRESSIVE;
+            break;
+        case GoBigger::AI::AIStrategy::MODEL_BASED:
+            actualStrategy = GoBigger::AI::SimpleAIPlayer::AIStrategy::MODEL_BASED;
+            break;
+        default:
+            actualStrategy = GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER;
+            break;
+    }
+    
+    // 首先设置指定的策略
+    aiPlayer->setAIStrategy(actualStrategy);
+    
+    // 如果是MODEL_BASED策略且提供了模型路径，尝试加载模型
+    if (actualStrategy == GoBigger::AI::SimpleAIPlayer::AIStrategy::MODEL_BASED && !aiModelPath.isEmpty()) {
+        if (!aiPlayer->loadAIModel(aiModelPath)) {
+            qWarning() << "Failed to load AI model from" << aiModelPath << "for player" << teamId << playerId;
+            // 根据teamId选择合适的回退策略
+            if (teamId == 2) {
+                qWarning() << "RL-AI model load failed, using AGGRESSIVE strategy as fallback";
+                aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::AGGRESSIVE);
+            } else {
+                qWarning() << "Custom AI model load failed, using FOOD_HUNTER strategy as fallback";
+                aiPlayer->setAIStrategy(GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER);
+            }
+        } else {
+            qDebug() << "Successfully loaded AI model from" << aiModelPath;
+        }
+    }
+    
+    m_aiPlayers.append(aiPlayer);
+    
+    // 连接AI销毁信号
+    connect(aiPlayer, &GoBigger::AI::SimpleAIPlayer::aiPlayerDestroyed,
+            this, &GameManager::handleAIPlayerDestroyed);
+    
+    // 启动AI控制
+    aiPlayer->startAI();
+    
+    qDebug() << "Successfully added AI player for team" << teamId << "player" << playerId 
+             << "at position" << startPos << "with strategy" << static_cast<int>(strategy) << "and started AI";
     
     return true;
 }
@@ -1001,6 +1131,8 @@ void GameManager::removeAIPlayer(int teamId, int playerId)
             aiPlayer->stopAI();
             CloneBall* playerBall = aiPlayer->getPlayerBall();
             if (playerBall) {
+                m_players.removeOne(playerBall);  // 从玩家列表中移除
+                emit playerRemoved(playerBall);   // 发出移除信号
                 removeBall(playerBall);
             }
             
@@ -1044,6 +1176,7 @@ void GameManager::removeAllAI()
     for (auto aiPlayer : m_aiPlayers) {
         if (aiPlayer && aiPlayer->getPlayerBall()) {
             CloneBall* playerBall = aiPlayer->getPlayerBall();
+            m_players.removeOne(playerBall);  // 从玩家列表中移除
             removeBall(playerBall);
         }
         delete aiPlayer;
@@ -1051,4 +1184,20 @@ void GameManager::removeAllAI()
     
     m_aiPlayers.clear();
     qDebug() << "Removed all AI players";
+}
+
+void GameManager::handleAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer)
+{
+    if (!aiPlayer) return;
+    
+    qDebug() << "AI player destroyed, removing from manager";
+    
+    // 从AI玩家列表中移除
+    m_aiPlayers.removeOne(aiPlayer);
+    
+    // 不需要手动删除aiPlayer，因为它会自动销毁
+    // 但我们需要从调试台中移除它（如果有的话）
+    // 这将通过信号机制由GameView处理
+    
+    qDebug() << "AI player removed from manager, remaining AI count:" << m_aiPlayers.size();
 }

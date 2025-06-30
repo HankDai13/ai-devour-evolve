@@ -18,6 +18,15 @@
 #include <QDebug>
 #include <QCursor>
 #include <QPainter>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QComboBox>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QLabel>
+#include <QFileDialog>
+#include <QMessageBox>
 #include <QLineF>
 #include <QMessageBox>
 #include <cmath>
@@ -606,18 +615,36 @@ void GameView::onPlayerRemoved(CloneBall* player)
     }
 }
 
+void GameView::onAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer)
+{
+    if (!aiPlayer) return;
+    
+    qDebug() << "GameView: AI player destroyed, removing from debug widget";
+    
+    // 从调试台中移除AI
+    if (m_aiDebugWidget) {
+        m_aiDebugWidget->removeAIPlayer(aiPlayer);
+    }
+    
+    // 从本地AI列表中移除（如果有的话）
+    m_aiPlayers.removeOne(aiPlayer);
+    
+    qDebug() << "GameView: AI player cleanup completed";
+}
+
 QVector<CloneBall*> GameView::getAllPlayerBalls() const
 {
     QVector<CloneBall*> allBalls;
     
-    if (!m_gameManager) {
+    if (!m_gameManager || !m_mainPlayer) {
         return allBalls;
     }
     
-    // 获取游戏管理器中的所有玩家球
+    // 只获取主玩家的球（teamId=0, playerId=0），不包括AI球
     QVector<CloneBall*> players = m_gameManager->getPlayers();
     for (CloneBall* player : players) {
-        if (player && !player->isRemoved()) {
+        if (player && !player->isRemoved() && 
+            player->teamId() == 0 && player->playerId() == 0) {
             allBalls.append(player);
         }
     }
@@ -655,10 +682,10 @@ void GameView::addAIPlayer()
     if (!m_gameManager) return;
     
     static int aiPlayerCount = 1;
-    QString aiName = QString("AI-Player-%1").arg(aiPlayerCount++);
     
-    // 使用GameManager添加AI玩家
-    bool success = m_gameManager->addAIPlayer(0, aiPlayerCount, "");
+    // 使用GameManager添加AI玩家 - 使用teamId=1区分于主玩家(teamId=0), 默认使用FOOD_HUNTER策略
+    bool success = m_gameManager->addAIPlayerWithStrategy(1, aiPlayerCount++, 
+                                                         GoBigger::AI::AIStrategy::FOOD_HUNTER, "");
     
     if (success && m_aiDebugWidget) {
         // 从GameManager获取最新添加的AI
@@ -666,6 +693,10 @@ void GameView::addAIPlayer()
         if (!aiPlayers.isEmpty()) {
             auto lastAI = aiPlayers.last();
             m_aiDebugWidget->addAIPlayer(lastAI);
+            
+            // 连接AI销毁信号
+            connect(lastAI, &GoBigger::AI::SimpleAIPlayer::aiPlayerDestroyed,
+                    this, &GameView::onAIPlayerDestroyed);
         }
     }
 }
@@ -675,17 +706,25 @@ void GameView::addRLAIPlayer()
     if (!m_gameManager) return;
     
     static int rlAiPlayerCount = 1;
-    QString aiName = QString("RL-AI-Player-%1").arg(rlAiPlayerCount++);
     
-    // 使用默认的RL模型路径
+    // 使用默认的RL模型路径 - 使用teamId=2区分于主玩家和普通AI
+    // 注意：如果模型文件不存在，会自动回退到AGGRESSIVE策略
     QString modelPath = "assets/ai_models/default_rl_model.onnx";
-    bool success = m_gameManager->addAIPlayer(0, 1000 + rlAiPlayerCount, modelPath);
+    
+    qDebug() << "Adding RL-AI player with model:" << modelPath;
+    
+    bool success = m_gameManager->addAIPlayerWithStrategy(2, 1000 + rlAiPlayerCount++, 
+                                                         GoBigger::AI::AIStrategy::MODEL_BASED, modelPath);
     
     if (success && m_aiDebugWidget) {
         auto aiPlayers = m_gameManager->getAIPlayers();
         if (!aiPlayers.isEmpty()) {
             auto lastAI = aiPlayers.last();
             m_aiDebugWidget->addAIPlayer(lastAI);
+            
+            // 连接AI销毁信号
+            connect(lastAI, &GoBigger::AI::SimpleAIPlayer::aiPlayerDestroyed,
+                    this, &GameView::onAIPlayerDestroyed);
         }
     }
 }
@@ -711,6 +750,119 @@ void GameView::removeAllAI()
         
         if (m_aiDebugWidget) {
             m_aiDebugWidget->clearAllAI();
+        }
+    }
+}
+
+void GameView::addAIPlayerWithDialog()
+{
+    if (!m_gameManager) return;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("添加AI玩家");
+    dialog.setFixedSize(400, 300);
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+
+    // AI策略选择
+    QLabel* strategyLabel = new QLabel("AI策略类型:", &dialog);
+    layout->addWidget(strategyLabel);
+
+    QComboBox* strategyCombo = new QComboBox(&dialog);
+    strategyCombo->addItem("随机移动", static_cast<int>(GoBigger::AI::AIStrategy::RANDOM));
+    strategyCombo->addItem("食物猎手", static_cast<int>(GoBigger::AI::AIStrategy::FOOD_HUNTER));
+    strategyCombo->addItem("攻击性策略", static_cast<int>(GoBigger::AI::AIStrategy::AGGRESSIVE));
+    strategyCombo->addItem("模型驱动", static_cast<int>(GoBigger::AI::AIStrategy::MODEL_BASED));
+    strategyCombo->setCurrentIndex(1); // 默认选择食物猎手
+    layout->addWidget(strategyCombo);
+
+    // 模型路径选择
+    QLabel* modelLabel = new QLabel("RL模型路径 (仅模型驱动需要):", &dialog);
+    layout->addWidget(modelLabel);
+
+    QHBoxLayout* modelLayout = new QHBoxLayout();
+    QLineEdit* modelPathEdit = new QLineEdit(&dialog);
+    modelPathEdit->setPlaceholderText("选择或输入模型文件路径...");
+    modelPathEdit->setEnabled(false); // 默认禁用
+
+    QPushButton* browseButton = new QPushButton("浏览...", &dialog);
+    browseButton->setEnabled(false); // 默认禁用
+
+    modelLayout->addWidget(modelPathEdit);
+    modelLayout->addWidget(browseButton);
+    layout->addLayout(modelLayout);
+
+    // 策略改变时的处理
+    auto updateModelWidgets = [modelPathEdit, browseButton](int index) {
+        bool isModelBased = (index == 3); // 模型驱动的索引
+        modelPathEdit->setEnabled(isModelBased);
+        browseButton->setEnabled(isModelBased);
+        if (isModelBased && modelPathEdit->text().isEmpty()) {
+            modelPathEdit->setText("assets/ai_models/default_rl_model.onnx");
+        }
+    };
+
+    connect(strategyCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateModelWidgets);
+
+    // 浏览按钮处理
+    connect(browseButton, &QPushButton::clicked, [&dialog, modelPathEdit]() {
+        QString fileName = QFileDialog::getOpenFileName(
+            &dialog,
+            "选择RL模型文件",
+            "assets/ai_models/",
+            "模型文件 (*.onnx *.pt *.pth);;所有文件 (*.*)"
+        );
+        if (!fileName.isEmpty()) {
+            modelPathEdit->setText(fileName);
+        }
+    });
+
+    // 按钮区域
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    QPushButton* okButton = new QPushButton("确定", &dialog);
+    QPushButton* cancelButton = new QPushButton("取消", &dialog);
+
+    buttonLayout->addStretch();
+    buttonLayout->addWidget(okButton);
+    buttonLayout->addWidget(cancelButton);
+    layout->addLayout(buttonLayout);
+
+    connect(okButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        static int aiPlayerCount = 1;
+        
+        GoBigger::AI::AIStrategy strategy = static_cast<GoBigger::AI::AIStrategy>(
+            strategyCombo->currentData().toInt()
+        );
+        
+        QString modelPath = modelPathEdit->text();
+        
+        // 如果是模型驱动但没有模型路径，显示警告
+        if (strategy == GoBigger::AI::AIStrategy::MODEL_BASED && modelPath.isEmpty()) {
+            QMessageBox::warning(this, "警告", "模型驱动策略需要指定模型文件路径！");
+            return;
+        }
+        
+        // 根据策略类型分配不同的teamId
+        int teamId = 10 + static_cast<int>(strategy); // 从10开始，避免与现有冲突
+        
+        bool success = m_gameManager->addAIPlayerWithStrategy(teamId, aiPlayerCount++, strategy, modelPath);
+        
+        if (success && m_aiDebugWidget) {
+            auto aiPlayers = m_gameManager->getAIPlayers();
+            if (!aiPlayers.isEmpty()) {
+                auto lastAI = aiPlayers.last();
+                m_aiDebugWidget->addAIPlayer(lastAI);
+                
+                // 连接AI销毁信号
+                connect(lastAI, &GoBigger::AI::SimpleAIPlayer::aiPlayerDestroyed,
+                        this, &GameView::onAIPlayerDestroyed);
+            }
+            qDebug() << "Successfully added AI player with strategy" << static_cast<int>(strategy);
+        } else {
+            QMessageBox::warning(this, "错误", "添加AI玩家失败！");
         }
     }
 }
@@ -763,15 +915,15 @@ QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) c
     
     for (CloneBall* ball : balls) {
         if (ball && !ball->isRemoved()) {
-            qreal mass = ball->radius() * ball->radius(); // 使用面积作为质量
+            qreal mass = ball->score();
             centroid += ball->pos() * mass;
             totalMass += mass;
         }
     }
     
-    if (totalMass > 0) {
-        centroid /= totalMass;
+    if (totalMass > 0.0) {
+        return centroid / totalMass;
     }
     
-    return centroid;
+    return QPointF(0, 0);
 }
