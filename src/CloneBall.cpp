@@ -195,11 +195,12 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
         return nullptr;
     }
     
-    // 确定孢子方向：如果没有指定方向，使用当前移动方向
+    // 确定孢子方向：使用传入的方向参数
     QVector2D sporeDirection;
     if (direction.length() > 0.01) {
         sporeDirection = direction.normalized();
     } else {
+        // 如果没有指定方向，使用当前移动方向作为备选
         sporeDirection = m_moveDirection.length() > 0.01 ? m_moveDirection.normalized() : QVector2D(1, 0);
     }
     
@@ -211,38 +212,26 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
     // 减少自己的分数
     setScore(m_score - scoreLoss);
     
-    // 计算孢子位置：在玩家球边缘外切，增加距离避免立即重叠
+    // 计算孢子位置：在玩家球边缘外切，避免立即重叠
     float sporeRadius = GoBiggerConfig::scoreToRadius(sporeScore);
-    float safeDistance = (radius() + sporeRadius) * 2.0f; // 增加到2倍安全距离
+    float safeDistance = (radius() + sporeRadius) * 1.5f; // 1.5倍安全距离
     
-    // 添加随机偏移，避免多个孢子重叠在完全相同的位置
-    static int sporeCounter = 0;
-    sporeCounter++;
-    float angleOffset = (sporeCounter % 8) * 45.0f; // 每个孢子偏移45度
-    QVector2D offsetDirection = sporeDirection;
-    if (sporeCounter > 1) {
-        // 计算偏移角度
-        float radians = qDegreesToRadians(angleOffset * 0.2f); // 增加偏移幅度
-        float cos_val = std::cos(radians);
-        float sin_val = std::sin(radians);
-        offsetDirection = QVector2D(
-            sporeDirection.x() * cos_val - sporeDirection.y() * sin_val,
-            sporeDirection.x() * sin_val + sporeDirection.y() * cos_val
-        );
-    }
+    // 🔥 修复：直接使用指定方向，不添加随机偏移
+    QPointF sporePos = pos() + QPointF(sporeDirection.x() * safeDistance, 
+                                       sporeDirection.y() * safeDistance);
     
-    QPointF sporePos = pos() + QPointF(offsetDirection.x() * safeDistance, 
-                                       offsetDirection.y() * safeDistance);
+    // 创建孢子球，使用时间戳确保唯一ID
+    static int sporeIdCounter = 0;
+    sporeIdCounter++;
+    int uniqueId = static_cast<int>(QDateTime::currentMSecsSinceEpoch() % 1000000) + sporeIdCounter;
     
-    // 创建孢子球，使用时间戳+计数器确保唯一ID
-    int uniqueId = static_cast<int>(QDateTime::currentMSecsSinceEpoch() % 1000000) + sporeCounter;
     SporeBall* spore = new SporeBall(
-        uniqueId, // 使用更好的唯一ID算法
+        uniqueId,
         sporePos,
         m_border,
         m_teamId,
         m_playerId,
-        sporeDirection,  // 孢子方向
+        sporeDirection,  // 🔥 直接使用计算好的方向，不做偏移
         velocity()       // 玩家球当前速度
     );
     
@@ -252,6 +241,10 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
     }
     
     emit sporeEjected(this, spore);
+    
+    qDebug() << "CloneBall" << ballId() << "ejected spore in direction:" 
+             << sporeDirection.x() << sporeDirection.y() 
+             << "at position:" << sporePos.x() << sporePos.y();
     
     return spore;
 }
