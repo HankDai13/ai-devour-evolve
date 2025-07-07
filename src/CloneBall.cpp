@@ -251,63 +251,56 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
 
 void CloneBall::move(const QVector2D& direction, qreal duration)
 {
+    // 🔥 修复：让配置参数真正生效的GoBigger逻辑
+    
     if (direction.length() > 0.01) {
-        // 使用GoBigger风格的动态速度计算
-        float currentRadius = radius();
-        float inputRatio = direction.length(); // 输入强度比例
+        // 标准化输入方向
+        QVector2D normalizedDir = direction.normalized();
+        float inputRatio = std::min(direction.length(), 1.0f);
         
-        // 计算动态最大速度和加速度
-        qreal maxSpeed = GoBiggerConfig::calculateDynamicSpeed(currentRadius, inputRatio);
-        qreal dynAccel = GoBiggerConfig::calculateDynamicAcceleration(currentRadius, inputRatio);
+        // 使用配置的加速度参数
+        float accelWeight = GoBiggerConfig::BASE_SPEED * 0.5f; // 让BASE_SPEED影响加速度
+        QVector2D targetAccel = normalizedDir * (accelWeight * inputRatio);
+        setAcceleration(targetAccel);
         
-        // 更直接的速度控制，减少延迟感
-        QVector2D targetVelocity = direction.normalized() * maxSpeed;
-        
-        // 动态加速度控制
-        QVector2D accel = (targetVelocity - velocity()) * dynAccel;
-        setAcceleration(accel);
-        
-        // 立即更新速度，但使用插值让变化更平滑
+        // 更新速度：vel_given = vel_given + acc * duration
         QVector2D currentVel = velocity();
-        QVector2D newVel = currentVel + accel * duration;
+        QVector2D newVel = currentVel + targetAccel * duration;
         
-        // 限制最大速度
+        // 🔥 让BASE_SPEED真正影响最大速度
+        float currentRadius = radius();
+        float baseMaxSpeed = (2.35f + 5.66f / currentRadius) * inputRatio;
+        float maxSpeed = baseMaxSpeed * (GoBiggerConfig::BASE_SPEED / 400.0f); // 以400为基准缩放
+        
+        // format_vector: 限制速度不超过最大值
         if (newVel.length() > maxSpeed) {
             newVel = newVel.normalized() * maxSpeed;
         }
         
-        // 使用更平滑的插值让速度变化更自然
-        QVector2D velocityDiff = newVel - currentVel;
-        
-        // 基于半径动态调整速度变化限制
-        float maxChange = maxSpeed * (0.1f + 0.2f / currentRadius); // 小球变化更快
-        if (velocityDiff.length() > maxChange) {
-            velocityDiff = velocityDiff.normalized() * maxChange;
-        }
-        
-        setVelocity(currentVel + velocityDiff);
+        setVelocity(newVel);
     } else {
-        // 如果没有输入方向，应用更平滑的阻力
+        // 没有输入时保持当前速度，添加少量阻力
         QVector2D currentVel = velocity();
-        if (currentVel.length() > 0.1) {
-            // 大球减速更慢，小球减速更快
-            float dampingFactor = 0.88f + 0.08f / radius();
-            setVelocity(currentVel * dampingFactor);
-        } else {
-            setVelocity(QVector2D(0, 0)); // 完全停止
-        }
+        setVelocity(currentVel * 0.98f);
+        setAcceleration(QVector2D(0, 0));
     }
     
-    // 应用分裂速度
+    // 🔥 GoBigger风格分裂速度处理
     if (m_splitVelocity.length() > 0.1) {
+        // 分裂速度和移动速度相加
         QVector2D totalVel = velocity() + m_splitVelocity;
         setVelocity(totalVel);
         
-        // 衰减分裂速度
+        // 分裂速度衰减：按帧数逐渐减少
         m_splitVelocity -= m_splitVelocityPiece;
+        
+        // 衰减完成后清零
         if (m_splitVelocity.length() < 0.1) {
             m_splitVelocity = QVector2D(0, 0);
         }
+        
+        // 更新分裂帧计数
+        m_splitFrame++;
     }
     
     // 调用基类物理更新
@@ -952,23 +945,18 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
     // 3. 确定分裂方向
     QVector2D splitDir = direction.length() > 0.01 ? direction.normalized() : QVector2D(1, 0);
     
-    // 4. 创建新球，第一个在指定方向，其他均匀分布
+    // 4. 创建新球，按照GoBigger原版：均匀分布在圆周上
     for (int i = 0; i < actualNewBalls; ++i) {
-        // 计算位置：第一个球在分裂方向上，其他球均匀分布在圆周上
-        float angle;
-        if (i == 0) {
-            // 第一个新球总是在分裂方向上
-            angle = std::atan2(splitDir.y(), splitDir.x());
-        } else {
-            // 其他球均匀分布，避开第一个球的位置
-            angle = (2.0f * M_PI * (i - 1)) / (actualNewBalls - 1);
-            if (actualNewBalls == 1) {
-                angle = std::atan2(splitDir.y(), splitDir.x());
-            }
-        }
+        // 🔥 GoBigger原版荆棘分裂：均匀分布在圆周上
+        float angle = 2.0f * M_PI * (i + 1) / actualNewBalls; // 从i+1开始避免重叠
         
-        float distance = radius() * 3.5f; // 增加分散距离，避免重叠
-        QVector2D offset(std::cos(angle) * distance, std::sin(angle) * distance);
+        // 计算新球半径用于分离距离
+        float newBallRadius = GoBiggerConfig::scoreToRadius(newBallScore);
+        
+        // GoBigger风格：新球位置 = 原球位置 + (原球半径 + 新球半径) * 方向
+        float separationDistance = radius() + newBallRadius;
+        QVector2D offset(std::cos(angle) * separationDistance, 
+                        std::sin(angle) * separationDistance);
         QPointF newPos = pos() + QPointF(offset.x(), offset.y());
         
         // 创建新球
@@ -989,9 +977,19 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
         newBall->setSplitParent(this);  // 设置父球关系
         m_splitChildren.append(newBall); // 添加到子球列表
         
-        // GoBigger风格速度继承：新球继承原球的移动速度，保持统一
+        // 🔥 GoBigger原版荆棘分裂速度：弹出动画 + 原速度继承
+        QVector2D splitDirection(std::cos(angle), std::sin(angle));
+        
+        // 计算荆棘分裂的弹出速度 (基于GoBigger原版公式)
+        float splitSpeed = GoBiggerConfig::calcSplitVelInitFromThorns(newBall->radius());
+        QVector2D splitVelocity = splitDirection * splitSpeed;
+        
+        // 新球速度 = 原球移动速度 + 弹出速度
         QVector2D originalVelocity = velocity();
-        newBall->setVelocity(originalVelocity);
+        newBall->setVelocity(originalVelocity + splitVelocity);
+        
+        // 应用分裂速度系统 (会逐渐衰减到原球速度)
+        newBall->applySplitVelocityEnhanced(splitDirection, splitSpeed, true);
         
         newBalls.append(newBall);
     }
