@@ -33,6 +33,9 @@ public:
     CloneBall* getMainPlayer() const { return m_mainPlayer; }
     float getTotalPlayerScore() const; // 获取玩家总分数（所有分身球的分数总和）
     
+    // 游戏管理器访问
+    GameManager* getGameManager() const { return m_gameManager; }
+    
     // AI玩家控制
     void addAIPlayer();
     void addRLAIPlayer();

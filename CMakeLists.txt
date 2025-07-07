@@ -87,6 +87,8 @@ set(SOURCES
     src/ONNXInference.cpp
     src/MultiPlayerManager.cpp
     src/AIDebugWidget.cpp
+    # 游戏启动界面
+    src/GameStartScreen.cpp
 )
 
 set(HEADERS
@@ -109,6 +111,8 @@ set(HEADERS
     src/ONNXInference.h
     src/MultiPlayerManager.h
     src/AIDebugWidget.h
+    # 游戏启动界面
+    src/GameStartScreen.h
 )
 
 set(UI_FILES

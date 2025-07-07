@@ -20,10 +20,101 @@ AIDebugWidget::AIDebugWidget(GameManager* gameManager, QWidget* parent)
     connect(m_refreshTimer, &QTimer::timeout, this, &AIDebugWidget::onRefreshTimer);
     m_refreshTimer->start();
     
-    setWindowTitle("AI Debug Console");
-    resize(800, 600);
+    setWindowTitle("🤖 AI调试控制台 - 智能分析面板");
+    setMinimumSize(900, 700);
+    resize(1000, 800);
     
-    addLogEntry("AI Debug Console initialized", "SYSTEM");
+    // 设置窗口样式
+    setStyleSheet(R"(
+        QWidget {
+            background-color: #1e1e1e;
+            color: #ffffff;
+            font-family: 'Microsoft YaHei', 'Segoe UI', Arial, sans-serif;
+        }
+        
+        QGroupBox {
+            font-weight: bold;
+            border: 2px solid #555;
+            border-radius: 8px;
+            margin: 5px;
+            padding-top: 10px;
+            background-color: #2a2a2a;
+        }
+        
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 5px 0 5px;
+            color: #4fc3f7;
+        }
+        
+        QListWidget {
+            background-color: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            alternate-background-color: #333;
+            selection-background-color: #0078d4;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 9pt;
+        }
+        
+        QTableWidget {
+            background-color: #2a2a2a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            alternate-background-color: #333;
+            selection-background-color: #0078d4;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 9pt;
+        }
+        
+        QTableWidget::item {
+            padding: 3px;
+            border-bottom: 1px solid #444;
+        }
+        
+        QTextEdit {
+            background-color: #1a1a1a;
+            border: 1px solid #555;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 9pt;
+            color: #f0f0f0;
+        }
+        
+        QProgressBar {
+            border: 1px solid #555;
+            border-radius: 4px;
+            background-color: #2a2a2a;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        QProgressBar::chunk {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                                      stop:0 #4fc3f7, stop:1 #29b6f6);
+            border-radius: 3px;
+        }
+        
+        QLabel {
+            color: #ffffff;
+            font-size: 10pt;
+        }
+        
+        QSplitter::handle {
+            background-color: #555;
+        }
+        
+        QSplitter::handle:horizontal {
+            width: 3px;
+        }
+        
+        QSplitter::handle:vertical {
+            height: 3px;
+        }
+    )");
+    
+    addLogEntry("🚀 AI调试控制台已初始化", "SYSTEM");
 }
 
 AIDebugWidget::~AIDebugWidget() {
@@ -61,15 +152,20 @@ void AIDebugWidget::setupUI() {
 }
 
 void AIDebugWidget::setupAIStatusPanel() {
-    m_aiStatusGroup = new QGroupBox("AI Players Status", this);
+    m_aiStatusGroup = new QGroupBox("🤖 AI玩家状态监控", this);
     QVBoxLayout* layout = new QVBoxLayout(m_aiStatusGroup);
     
     // AI计数标签
-    m_aiCountLabel = new QLabel("Total AI Players: 0", m_aiStatusGroup);
-    m_activeAILabel = new QLabel("Active AI: 0", m_aiStatusGroup);
+    m_aiCountLabel = new QLabel("🤖 总AI玩家: 0 | 存活: 0", m_aiStatusGroup);
+    m_activeAILabel = new QLabel("⚡ 活跃AI: 0", m_aiStatusGroup);
+    
+    // 设置标签样式
+    m_aiCountLabel->setStyleSheet("font-weight: bold; color: #4fc3f7;");
+    m_activeAILabel->setStyleSheet("font-weight: bold; color: #81c784;");
     
     // AI玩家列表
     m_aiPlayersList = new QListWidget(m_aiStatusGroup);
+    m_aiPlayersList->setAlternatingRowColors(true);
     connect(m_aiPlayersList, &QListWidget::itemSelectionChanged, 
             this, &AIDebugWidget::onAIPlayerSelected);
     
@@ -79,30 +175,36 @@ void AIDebugWidget::setupAIStatusPanel() {
 }
 
 void AIDebugWidget::setupPerformancePanel() {
-    m_performanceGroup = new QGroupBox("Performance Monitor", this);
+    m_performanceGroup = new QGroupBox("📊 性能监控面板", this);
     QVBoxLayout* layout = new QVBoxLayout(m_performanceGroup);
     
     // FPS监控
     QHBoxLayout* fpsLayout = new QHBoxLayout();
-    m_fpsLabel = new QLabel("FPS: 0", m_performanceGroup);
+    m_fpsLabel = new QLabel("🎮 FPS: 0", m_performanceGroup);
+    m_fpsLabel->setStyleSheet("font-weight: bold; color: #ffb74d;");
     m_fpsBar = new QProgressBar(m_performanceGroup);
     m_fpsBar->setRange(0, 120);
+    m_fpsBar->setStyleSheet("QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ffb74d, stop:1 #ff8a65); }");
     fpsLayout->addWidget(m_fpsLabel);
     fpsLayout->addWidget(m_fpsBar);
     
     // CPU使用率
     QHBoxLayout* cpuLayout = new QHBoxLayout();
-    m_cpuLabel = new QLabel("CPU: 0%", m_performanceGroup);
+    m_cpuLabel = new QLabel("⚙️ CPU: 0%", m_performanceGroup);
+    m_cpuLabel->setStyleSheet("font-weight: bold; color: #e57373;");
     m_cpuUsageBar = new QProgressBar(m_performanceGroup);
     m_cpuUsageBar->setRange(0, 100);
+    m_cpuUsageBar->setStyleSheet("QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #e57373, stop:1 #ef5350); }");
     cpuLayout->addWidget(m_cpuLabel);
     cpuLayout->addWidget(m_cpuUsageBar);
     
     // 内存使用率
     QHBoxLayout* memLayout = new QHBoxLayout();
-    m_memoryLabel = new QLabel("Memory: 0MB", m_performanceGroup);
+    m_memoryLabel = new QLabel("💾 内存: 0MB", m_performanceGroup);
+    m_memoryLabel->setStyleSheet("font-weight: bold; color: #ba68c8;");
     m_memoryUsageBar = new QProgressBar(m_performanceGroup);
     m_memoryUsageBar->setRange(0, 1024); // 1GB
+    m_memoryUsageBar->setStyleSheet("QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ba68c8, stop:1 #ab47bc); }");
     memLayout->addWidget(m_memoryLabel);
     memLayout->addWidget(m_memoryUsageBar);
     
@@ -112,19 +214,36 @@ void AIDebugWidget::setupPerformancePanel() {
 }
 
 void AIDebugWidget::setupDecisionPanel() {
-    m_decisionGroup = new QGroupBox("AI Decision Details", this);
+    m_decisionGroup = new QGroupBox("🧠 AI决策分析面板", this);
     QVBoxLayout* layout = new QVBoxLayout(m_decisionGroup);
     
     // 选中的AI信息
-    m_selectedAILabel = new QLabel("Selected AI: None", m_decisionGroup);
-    m_currentStrategyLabel = new QLabel("Strategy: N/A", m_decisionGroup);
-    m_lastActionLabel = new QLabel("Last Action: N/A", m_decisionGroup);
+    m_selectedAILabel = new QLabel("📍 选中AI: 无", m_decisionGroup);
+    m_selectedAILabel->setStyleSheet("font-weight: bold; color: #4fc3f7;");
+    
+    m_currentStrategyLabel = new QLabel("🎯 策略: 无", m_decisionGroup);
+    m_currentStrategyLabel->setStyleSheet("font-weight: bold; color: #81c784;");
+    
+    m_lastActionLabel = new QLabel("⚡ 最后动作: 无", m_decisionGroup);
+    m_lastActionLabel->setStyleSheet("font-weight: bold; color: #ffb74d;");
     
     // 决策表格
     m_decisionTable = new QTableWidget(0, 3, m_decisionGroup);
-    m_decisionTable->setHorizontalHeaderLabels({"Time", "Action Type", "Details"});
+    m_decisionTable->setHorizontalHeaderLabels({"⏰ 时间", "🎯 动作类型", "📋 详细信息"});
     m_decisionTable->horizontalHeader()->setStretchLastSection(true);
     m_decisionTable->setAlternatingRowColors(true);
+    m_decisionTable->setSortingEnabled(false);
+    
+    // 设置表格样式
+    m_decisionTable->horizontalHeader()->setStyleSheet(
+        "QHeaderView::section { "
+        "background-color: #3a3a3a; "
+        "color: #ffffff; "
+        "font-weight: bold; "
+        "border: 1px solid #555; "
+        "padding: 4px; "
+        "}"
+    );
     
     layout->addWidget(m_selectedAILabel);
     layout->addWidget(m_currentStrategyLabel);
@@ -133,11 +252,13 @@ void AIDebugWidget::setupDecisionPanel() {
 }
 
 void AIDebugWidget::setupLogPanel() {
-    m_logGroup = new QGroupBox("Debug Log", this);
+    m_logGroup = new QGroupBox("📜 调试日志面板", this);
     QVBoxLayout* layout = new QVBoxLayout(m_logGroup);
     
     m_logTextEdit = new QTextEdit(m_logGroup);
     m_logTextEdit->setReadOnly(true);
+    // 注意：setMaximumBlockCount在某些Qt版本中可能不可用
+    // m_logTextEdit->setMaximumBlockCount(1000); // 限制日志行数
     
     layout->addWidget(m_logTextEdit);
 }
@@ -204,85 +325,185 @@ void AIDebugWidget::updateAIStatus() {
     // 更新计数
     int totalAI = m_monitoredAI.size();
     int activeAI = 0;
+    int aliveAI = 0;
     
     for (auto ai : m_monitoredAI) {
-        if (ai && ai->isAIActive()) {
-            activeAI++;
+        if (ai) {
+            if (ai->isAIActive()) {
+                activeAI++;
+            }
+            if (ai->getPlayerBall() && !ai->getPlayerBall()->isRemoved()) {
+                aliveAI++;
+            }
         }
     }
     
-    m_aiCountLabel->setText(QString("Total AI Players: %1").arg(totalAI));
-    m_activeAILabel->setText(QString("Active AI: %1").arg(activeAI));
+    m_aiCountLabel->setText(QString("🤖 总AI玩家: %1 | 存活: %2").arg(totalAI).arg(aliveAI));
+    m_activeAILabel->setText(QString("⚡ 活跃AI: %1").arg(activeAI));
     
     // 更新AI列表
     m_aiPlayersList->clear();
-    for (int i = 0; i < m_monitoredAI.size(); ++i) {
-        auto ai = m_monitoredAI[i];
+    
+    // 按队伍分组显示
+    QMap<int, QVector<GoBigger::AI::SimpleAIPlayer*>> teamGroups;
+    QVector<GoBigger::AI::SimpleAIPlayer*> unknownTeamAI;
+    
+    for (auto ai : m_monitoredAI) {
         if (!ai) continue;
         
-        QString status = ai->isAIActive() ? "Active" : "Inactive";
-        QString strategy = "Unknown";
-        
-        switch (ai->getAIStrategy()) {
-        case GoBigger::AI::SimpleAIPlayer::AIStrategy::RANDOM:
-            strategy = "Random";
-            break;
-        case GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER:
-            strategy = "Food Hunter";
-            break;
-        case GoBigger::AI::SimpleAIPlayer::AIStrategy::AGGRESSIVE:
-            strategy = "Aggressive";
-            break;
-        case GoBigger::AI::SimpleAIPlayer::AIStrategy::MODEL_BASED:
-            strategy = "Model-Based";
-            break;
-        }
-        
-        QString aiName = QString("AI-%1").arg(i + 1);
-        QString scoreInfo = "N/A";
-        QString ballColor = "N/A";
-        
         if (ai->getPlayerBall() && !ai->getPlayerBall()->isRemoved()) {
-            CloneBall* ball = ai->getPlayerBall();
-            aiName = QString("AI-T%1P%2").arg(ball->teamId()).arg(ball->playerId());
-            scoreInfo = QString("Score: %1").arg(static_cast<int>(ball->score()));
-            
-            // 根据teamId生成颜色信息
-            ballColor = QString("Team %1").arg(ball->teamId());
-            
-            // 简单的颜色映射
-            switch (ball->teamId() % 8) {
-                case 0: ballColor += " (Blue)"; break;
-                case 1: ballColor += " (Red)"; break;
-                case 2: ballColor += " (Green)"; break;
-                case 3: ballColor += " (Yellow)"; break;
-                case 4: ballColor += " (Purple)"; break;
-                case 5: ballColor += " (Orange)"; break;
-                case 6: ballColor += " (Cyan)"; break;
-                default: ballColor += " (Pink)"; break;
+            int teamId = ai->getPlayerBall()->teamId();
+            teamGroups[teamId].append(ai);
+        } else {
+            unknownTeamAI.append(ai);
+        }
+    }
+    
+    // 定义更丰富的队伍信息
+    struct TeamInfo {
+        QString name;
+        QString colorName;
+        QColor bgColor;
+        QColor textColor;
+    };
+    
+    QMap<int, TeamInfo> teamInfos = {
+        {0, {"🔵 蓝色战队", "蔚蓝", QColor(173, 216, 230), QColor(0, 0, 139)}},
+        {1, {"🔴 红色战队", "烈焰", QColor(255, 182, 193), QColor(139, 0, 0)}},
+        {2, {"🟢 绿色战队", "翡翠", QColor(144, 238, 144), QColor(0, 100, 0)}},
+        {3, {"🟡 黄色战队", "金辉", QColor(255, 255, 224), QColor(184, 134, 11)}},
+        {4, {"🟣 紫色战队", "紫罗兰", QColor(221, 160, 221), QColor(75, 0, 130)}},
+        {5, {"🟠 橙色战队", "夕阳", QColor(255, 218, 185), QColor(255, 69, 0)}},
+        {6, {"🩵 青色战队", "碧空", QColor(175, 238, 238), QColor(0, 139, 139)}},
+        {7, {"🩷 粉色战队", "樱花", QColor(255, 192, 203), QColor(199, 21, 133)}}
+    };
+    
+    // 按队伍显示
+    for (auto it = teamGroups.begin(); it != teamGroups.end(); ++it) {
+        int teamId = it.key();
+        const auto& teamAI = it.value();
+        
+        TeamInfo teamInfo = teamInfos.value(teamId, {"❓ 未知战队", "未知", QColor(200, 200, 200), QColor(64, 64, 64)});
+        
+        // 计算队伍总分
+        float teamTotalScore = 0;
+        for (auto ai : teamAI) {
+            if (ai->getPlayerBall() && !ai->getPlayerBall()->isRemoved()) {
+                teamTotalScore += ai->getPlayerBall()->score();
             }
-        } else {
-            scoreInfo = "Ball Removed";
-            ballColor = "N/A";
-            status = "Destroyed"; // AI球被吃掉后的状态
         }
         
-        // 格式：AI名称 [状态] (策略) | 分数 | 颜色
-        QString itemText = QString("%1 [%2] (%3) | %4 | Color: %5")
-                           .arg(aiName, status, strategy, scoreInfo, ballColor);
-        QListWidgetItem* item = new QListWidgetItem(itemText);
-        item->setData(Qt::UserRole, QVariant::fromValue(ai));
+        // 添加队伍标题
+        QString teamHeader = QString("═══ %1 (队伍 %2) - 总分: %3 ═══")
+                            .arg(teamInfo.name)
+                            .arg(teamId)
+                            .arg(QString::number(teamTotalScore, 'f', 0));
         
-        // 根据状态设置背景色
-        if (ai->getPlayerBall() && ai->getPlayerBall()->isRemoved()) {
-            item->setBackground(QBrush(QColor(128, 128, 128))); // 灰色：已被吃掉
-        } else if (ai->isAIActive()) {
-            item->setBackground(QBrush(QColor(200, 255, 200))); // 浅绿色：活跃
-        } else {
-            item->setBackground(QBrush(QColor(255, 200, 200))); // 浅红色：非活跃
+        QListWidgetItem* headerItem = new QListWidgetItem(teamHeader);
+        QFont headerFont;
+        headerFont.setBold(true);
+        headerFont.setPointSize(10);
+        headerItem->setFont(headerFont);
+        headerItem->setBackground(QBrush(teamInfo.bgColor.darker(120)));
+        headerItem->setForeground(QBrush(teamInfo.textColor));
+        headerItem->setFlags(Qt::ItemIsEnabled); // 不可选择
+        m_aiPlayersList->addItem(headerItem);
+        
+        // 添加该队伍的AI
+        for (int i = 0; i < teamAI.size(); ++i) {
+            auto ai = teamAI[i];
+            
+            QString status = ai->isAIActive() ? "🟢 运行中" : "🔴 已停止";
+            QString strategy = "❓ 未知";
+            
+            switch (ai->getAIStrategy()) {
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::RANDOM:
+                strategy = "🎲 随机模式";
+                break;
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER:
+                strategy = "🍎 食物猎人";
+                break;
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::AGGRESSIVE:
+                strategy = "⚔️ 攻击策略";
+                break;
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::MODEL_BASED:
+                strategy = "🧠 AI模型";
+                break;
+            }
+            
+            CloneBall* ball = ai->getPlayerBall();
+            QString aiName = QString("  ├─ AI-P%1").arg(ball->playerId());
+            QString scoreInfo = QString("分数: %1").arg(QString::number(ball->score(), 'f', 0));
+            QString radiusInfo = QString("半径: %1").arg(QString::number(ball->radius(), 'f', 1));
+            QString posInfo = QString("位置: (%1,%2)")
+                             .arg(QString::number(ball->pos().x(), 'f', 0))
+                             .arg(QString::number(ball->pos().y(), 'f', 0));
+            
+            QString itemText = QString("%1 【%2】 (%3) | %4 | %5 | %6")
+                              .arg(aiName, status, strategy, scoreInfo, radiusInfo, posInfo);
+            
+            QListWidgetItem* item = new QListWidgetItem(itemText);
+            item->setData(Qt::UserRole, QVariant::fromValue(ai));
+            
+            // 设置样式
+            if (ai->isAIActive()) {
+                item->setBackground(QBrush(teamInfo.bgColor.lighter(110)));
+                item->setForeground(QBrush(teamInfo.textColor));
+            } else {
+                item->setBackground(QBrush(teamInfo.bgColor.darker(130)));
+                item->setForeground(QBrush(teamInfo.textColor.lighter(150)));
+            }
+            
+            m_aiPlayersList->addItem(item);
         }
         
-        m_aiPlayersList->addItem(item);
+        // 添加空行分隔
+        QListWidgetItem* separator = new QListWidgetItem("");
+        separator->setFlags(Qt::ItemIsEnabled);
+        separator->setSizeHint(QSize(0, 5));
+        m_aiPlayersList->addItem(separator);
+    }
+    
+    // 显示已被淘汰的AI
+    if (!unknownTeamAI.isEmpty()) {
+        QListWidgetItem* destroyedHeader = new QListWidgetItem("═══ 💀 已淘汰的AI ═══");
+        QFont headerFont;
+        headerFont.setBold(true);
+        headerFont.setPointSize(10);
+        destroyedHeader->setFont(headerFont);
+        destroyedHeader->setBackground(QBrush(QColor(128, 128, 128)));
+        destroyedHeader->setForeground(QBrush(QColor(255, 255, 255)));
+        destroyedHeader->setFlags(Qt::ItemIsEnabled);
+        m_aiPlayersList->addItem(destroyedHeader);
+        
+        for (auto ai : unknownTeamAI) {
+            QString strategy = "❓ 未知";
+            switch (ai->getAIStrategy()) {
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::RANDOM:
+                strategy = "🎲 随机模式";
+                break;
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::FOOD_HUNTER:
+                strategy = "🍎 食物猎人";
+                break;
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::AGGRESSIVE:
+                strategy = "⚔️ 攻击策略";
+                break;
+            case GoBigger::AI::SimpleAIPlayer::AIStrategy::MODEL_BASED:
+                strategy = "🧠 AI模型";
+                break;
+            }
+            
+            QString itemText = QString("  💀 AI已被淘汰 (%1) - 状态: %2")
+                              .arg(strategy)
+                              .arg(ai->isAIActive() ? "仍在运行" : "已停止");
+            
+            QListWidgetItem* item = new QListWidgetItem(itemText);
+            item->setData(Qt::UserRole, QVariant::fromValue(ai));
+            item->setBackground(QBrush(QColor(64, 64, 64)));
+            item->setForeground(QBrush(QColor(192, 192, 192)));
+            
+            m_aiPlayersList->addItem(item);
+        }
     }
 }
 
@@ -389,21 +610,42 @@ void AIDebugWidget::onRefreshTimer() {
         lastTime = currentTime;
         
         // 更新UI
-        m_fpsLabel->setText(QString("FPS: %1").arg(m_perfStats.fps, 0, 'f', 1));
-        m_fpsBar->setValue(static_cast<int>(m_perfStats.fps));
+        m_fpsLabel->setText(QString("🎮 FPS: %1").arg(m_perfStats.fps, 0, 'f', 1));
+        m_fpsBar->setValue(static_cast<int>(qMin(120.0, m_perfStats.fps)));
         
-        // 简单的CPU和内存统计（这里只是示例）
-        m_perfStats.cpuUsage = qMin(100.0, m_perfStats.actionCount * 0.1);
-        m_perfStats.memoryUsage = QApplication::applicationDisplayName().length() * 10; // 示例值
+        // 基于AI数量和动作频率计算更真实的CPU使用率
+        int totalAI = m_monitoredAI.size();
+        int activeAI = 0;
+        for (auto ai : m_monitoredAI) {
+            if (ai && ai->isAIActive()) {
+                activeAI++;
+            }
+        }
         
-        m_cpuLabel->setText(QString("CPU: %1%").arg(m_perfStats.cpuUsage, 0, 'f', 1));
+        // CPU使用率模拟：基于活跃AI数量和动作频率
+        m_perfStats.cpuUsage = qMin(100.0, activeAI * 2.5 + m_perfStats.actionCount * 0.8);
+        
+        // 内存使用率模拟：基于AI数量和游戏时间
+        static int gameSeconds = 0;
+        gameSeconds++;
+        m_perfStats.memoryUsage = qMin(1024.0, 128.0 + totalAI * 8.0 + gameSeconds * 0.1);
+        
+        m_cpuLabel->setText(QString("⚙️ CPU: %1%").arg(m_perfStats.cpuUsage, 0, 'f', 1));
         m_cpuUsageBar->setValue(static_cast<int>(m_perfStats.cpuUsage));
         
-        m_memoryLabel->setText(QString("Memory: %1MB").arg(m_perfStats.memoryUsage, 0, 'f', 1));
+        m_memoryLabel->setText(QString("💾 内存: %1MB").arg(m_perfStats.memoryUsage, 0, 'f', 1));
         m_memoryUsageBar->setValue(static_cast<int>(m_perfStats.memoryUsage));
         
         // 重置计数器
         m_perfStats.actionCount = 0;
+    }
+    
+    // 每10帧更新一次AI状态（降低更新频率）
+    static int updateCounter = 0;
+    updateCounter++;
+    if (updateCounter >= 10) {
+        updateCounter = 0;
+        updateAIStatus();
     }
 }
 
