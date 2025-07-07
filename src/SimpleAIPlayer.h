@@ -63,6 +63,12 @@ public:
     // 获取关联的玩家球
     CloneBall* getPlayerBall() const { return m_playerBall; }
     
+    // 🔥 新增：获取所有存活的球（多球生存机制）
+    QVector<CloneBall*> getAllAliveBalls() const { return m_splitBalls; }
+    bool hasAliveBalls() const { return !m_splitBalls.isEmpty(); }
+    CloneBall* getLargestBall() const;
+    CloneBall* getMainControlBall() const; // 获取主控制球（最大的球）
+    
     // 设置决策间隔（毫秒）
     void setDecisionInterval(int interval_ms);
     int getDecisionInterval() const { return m_decisionInterval; }
@@ -112,6 +118,46 @@ private:
     AIAction makeFoodHunterDecision();
     AIAction makeAggressiveDecision();
     AIAction makeModelBasedDecision();
+    
+    // 🔥 新增：优化的策略方法
+    AIAction makeSmartFoodHunterDecision();     // 智能食物猎手
+    AIAction makeThreatAwareDecision();         // 威胁感知决策
+    AIAction makeCoordinatedDecision();         // 多球协调决策
+    
+    // 威胁评估系统
+    struct ThreatInfo {
+        CloneBall* threatBall;
+        float threatLevel;       // 威胁等级 (0.0-5.0)
+        float distance;          // 距离
+        QPointF escapeDirection; // 逃跑方向
+    };
+    
+    std::vector<ThreatInfo> assessThreats();
+    float calculateThreatLevel(CloneBall* threat, CloneBall* myBall);
+    bool shouldSplitToEscape(const std::vector<ThreatInfo>& threats);
+    
+    // 食物密度分析
+    struct FoodCluster {
+        QPointF center;          // 聚集中心
+        float totalScore;        // 总食物价值
+        int foodCount;           // 食物数量
+        float density;           // 密度值
+        float safetyLevel;       // 安全等级 (0.0-1.0)
+    };
+    
+    std::vector<FoodCluster> analyzeFoodClusters();
+    bool shouldSplitForFood(const FoodCluster& cluster);
+    
+    // 荆棘球智能交互
+    enum class ThornsStrategy {
+        AVOID,       // 避开
+        EAT,         // 吃掉
+        MAINTAIN,    // 保持距离
+        IGNORE       // 忽略
+    };
+    
+    ThornsStrategy decideThornsStrategy(BaseBall* thorns);
+    AIAction handleThornsInteraction(BaseBall* thorns, ThornsStrategy strategy);
     
     // 特征提取
     std::vector<float> extractObservation();

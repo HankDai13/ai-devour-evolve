@@ -81,6 +81,15 @@ private:
     qreal m_maxVisionRadius;
     qreal m_scaleUpRatio;
     
+    // 🔥 视角稳定性控制
+    qreal m_lastTargetZoom;           // 上次的目标缩放
+    QPointF m_lastCentroid;           // 上次的质心位置
+    qreal m_zoomDeadZone;             // 缩放死区阈值
+    qreal m_centroidDeadZone;         // 质心移动死区阈值
+    int m_stableFrameCount;           // 稳定帧计数
+    int m_requiredStableFrames;       // 需要的稳定帧数
+    bool m_isInitialStabilizing;      // 是否在初始稳定阶段
+    
     // AI控制
     QVector<GoBigger::AI::SimpleAIPlayer*> m_aiPlayers;
     

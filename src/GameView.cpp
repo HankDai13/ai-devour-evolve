@@ -30,6 +30,8 @@
 #include <QLineF>
 #include <QMessageBox>
 #include <cmath>
+#include <algorithm>
+#include <limits>
 
 GameView::GameView(QWidget *parent) 
     : QGraphicsView(parent)
@@ -42,6 +44,13 @@ GameView::GameView(QWidget *parent)
     , m_minVisionRadius(400.0)     // 进一步增大最小视野半径，开局更大视野
     , m_maxVisionRadius(600.0)     // 增大最大视野范围
     , m_scaleUpRatio(1.8)          // 稍微增加缩放比例，但不要太快
+    , m_lastTargetZoom(1.0)        // 🔥 初始化稳定性控制变量
+    , m_lastCentroid(0, 0)
+    , m_zoomDeadZone(0.05)         // 5%的缩放死区
+    , m_centroidDeadZone(5.0)      // 5像素的质心移动死区
+    , m_stableFrameCount(0)
+    , m_requiredStableFrames(30)   // 需要30帧的稳定期
+    , m_isInitialStabilizing(true) // 开局进入稳定模式
     , m_aiDebugWidget(nullptr)
 {
     initializeView();
@@ -127,13 +136,36 @@ void GameView::initializePlayer()
         // 设置一个合理的初始分数，让玩家球更大一些
         m_mainPlayer->setScore(GoBiggerConfig::CELL_INIT_SCORE); // 使用新的标准初始分数
         
-        // 立即将视图中心设置到玩家位置
-        centerOn(m_mainPlayer->pos());
+        // 🔥 初始视角稳定设置
+        QPointF playerPos = m_mainPlayer->pos();
+        m_lastCentroid = playerPos;
+        
+        // 立即设置合理的初始缩放，避免后续计算导致的跳跃
+        float initialRadius = m_mainPlayer->radius();
+        float initialVisionSize = initialRadius * 12.0f; // 固定12倍半径的初始视野
+        float viewportSize = std::min(width(), height()) * 0.8f;
+        qreal initialZoom = viewportSize / initialVisionSize;
+        initialZoom = qBound(0.5, initialZoom, 1.5);
+        
+        // 直接设置初始缩放，避免过渡动画
+        resetTransform();
+        scale(initialZoom, initialZoom);
+        m_zoomFactor = initialZoom;
+        m_targetZoom = initialZoom;
+        m_lastTargetZoom = initialZoom;
+        
+        // 将视图中心设置到玩家位置
+        centerOn(playerPos);
+        
+        // 🔥 确保进入初始稳定模式
+        m_isInitialStabilizing = true;
+        m_stableFrameCount = 0;
         
         qDebug() << "Main player created with ID:" << m_mainPlayer->ballId() 
                  << "at position:" << m_mainPlayer->pos()
                  << "with radius:" << m_mainPlayer->radius()
-                 << "with score:" << m_mainPlayer->score();
+                 << "with score:" << m_mainPlayer->score()
+                 << "initial zoom:" << initialZoom;
     } else {
         qDebug() << "Failed to create main player!";
     }
@@ -168,6 +200,13 @@ void GameView::resetGame()
 {
     if (m_gameManager) {
         m_gameManager->resetGame();
+        
+        // 🔥 重置视角稳定性状态
+        m_isInitialStabilizing = true;
+        m_stableFrameCount = 0;
+        m_lastCentroid = QPointF(0, 0);
+        m_lastTargetZoom = 1.0;
+        
         // 重新创建主玩家
         initializePlayer();
     }
@@ -355,20 +394,91 @@ void GameView::updateCamera()
     
     // 计算所有玩家球的质心位置
     QVector<CloneBall*> allPlayerBalls = getAllPlayerBalls();
-    QPointF centroid = calculatePlayerCentroidAll(allPlayerBalls);
-    centerOn(centroid);
+    QPointF currentCentroid = calculatePlayerCentroidAll(allPlayerBalls);
     
-    // 计算智能缩放（基于GoBigger原版算法）
+    // 🔥 质心稳定性检查 - 避免微小移动导致的抖动
+    bool centroidStable = true;
+    if (!m_isInitialStabilizing) {
+        float centroidDistance = QLineF(currentCentroid, m_lastCentroid).length();
+        centroidStable = (centroidDistance < m_centroidDeadZone);
+    }
+    
+    // 只有质心移动足够大时才更新
+    if (centroidStable && !m_isInitialStabilizing) {
+        // 保持当前位置，避免小幅度跳动
+    } else {
+        // 🔥 平滑质心跟随 - 使用插值而不是直接跳转
+        if (!m_isInitialStabilizing && m_lastCentroid != QPointF(0, 0)) {
+            // 计算插值后的位置
+            float lerpFactor = 0.15f; // 15%的插值速度
+            QPointF smoothCentroid = m_lastCentroid + (currentCentroid - m_lastCentroid) * lerpFactor;
+            centerOn(smoothCentroid);
+            m_lastCentroid = smoothCentroid;
+        } else {
+            // 初始化或首次设置，直接使用目标位置
+            centerOn(currentCentroid);
+            m_lastCentroid = currentCentroid;
+        }
+    }
+    
+    // 计算智能缩放
+    qreal oldTargetZoom = m_targetZoom;
     calculateIntelligentZoomGoBigger(allPlayerBalls);
     
-    // 应用平滑缩放
-    adjustZoom();
+    // 🔥 缩放稳定性检查 - 避免频繁的微小缩放变化
+    bool zoomStable = true;
+    if (!m_isInitialStabilizing) {
+        float zoomChangeRatio = std::abs(m_targetZoom - m_lastTargetZoom) / m_lastTargetZoom;
+        zoomStable = (zoomChangeRatio < m_zoomDeadZone);
+    }
+    
+    // 检查是否进入稳定状态
+    if (centroidStable && zoomStable && !m_isInitialStabilizing) {
+        m_stableFrameCount++;
+    } else {
+        m_stableFrameCount = 0;
+        m_isInitialStabilizing = false; // 一旦有变化就退出初始稳定模式
+    }
+    
+    // 只有在不稳定或者稳定时间足够长时才调整缩放
+    if (!zoomStable || m_stableFrameCount >= m_requiredStableFrames || m_isInitialStabilizing) {
+        m_lastTargetZoom = m_targetZoom;
+        adjustZoom();
+        
+        if (m_stableFrameCount >= m_requiredStableFrames) {
+            m_stableFrameCount = 0; // 重置计数
+        }
+    }
+    
+    // 初始稳定期结束条件
+    if (m_isInitialStabilizing && allPlayerBalls.size() == 1) {
+        static int initialFrames = 0;
+        initialFrames++;
+        if (initialFrames > 60) { // 1秒后结束初始稳定期
+            m_isInitialStabilizing = false;
+            initialFrames = 0;
+        }
+    }
 }
 
 void GameView::calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPlayerBalls)
 {
     if (allPlayerBalls.isEmpty()) {
         return;
+    }
+    
+    // 🔥 单球特殊处理 - 开局稳定性优化
+    if (allPlayerBalls.size() == 1 && m_isInitialStabilizing) {
+        CloneBall* ball = allPlayerBalls.first();
+        if (ball && !ball->isRemoved()) {
+            // 开局时使用固定的合理缩放，避免抖动
+            float ballRadius = ball->radius();
+            float fixedVisionSize = std::max(ballRadius * 12.0f, 400.0f); // 最小400像素视野
+            float viewportSize = std::min(width(), height()) * 0.8f;
+            m_targetZoom = viewportSize / fixedVisionSize;
+            m_targetZoom = qBound(0.5, m_targetZoom, 1.5); // 限制初始缩放范围
+            return;
+        }
     }
     
     // GoBigger风格视野计算：
@@ -379,12 +489,14 @@ void GameView::calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPl
     float maxY = std::numeric_limits<float>::lowest();
     
     float maxRadius = 0;
+    float totalScore = 0; // 用于权重计算
     
     for (CloneBall* ball : allPlayerBalls) {
         if (!ball || ball->isRemoved()) continue;
         
         QPointF pos = ball->pos();
         float radius = ball->radius();
+        float score = ball->score();
         
         minX = std::min(minX, static_cast<float>(pos.x() - radius));
         maxX = std::max(maxX, static_cast<float>(pos.x() + radius));
@@ -392,6 +504,7 @@ void GameView::calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPl
         maxY = std::max(maxY, static_cast<float>(pos.y() + radius));
         
         maxRadius = std::max(maxRadius, radius);
+        totalScore += score;
     }
     
     // 2. 计算外接矩形的大小
@@ -399,24 +512,57 @@ void GameView::calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPl
     float rectHeight = maxY - minY;
     float maxDimension = std::max(rectWidth, rectHeight);
     
-    // 3. 应用最小视野保证（减小倍数，避免视角过大）
-    float minVisionSize = maxRadius * 8.0f; // 从12倍减少到8倍最大球半径的视野
+    // 3. 🔥 智能最小视野计算 - 根据球的状态动态调整
+    float baseVisionMultiplier = 10.0f; // 基础视野倍数
+    
+    // 根据球的数量调整视野：球越多视野越大
+    if (allPlayerBalls.size() > 1) {
+        baseVisionMultiplier += allPlayerBalls.size() * 2.0f;
+    }
+    
+    // 根据总分数调整视野：分数越高视野越大（但有上限）
+    float scoreMultiplier = 1.0f + std::min(totalScore / 1000.0f, 2.0f);
+    
+    float minVisionSize = maxRadius * baseVisionMultiplier * scoreMultiplier;
     float requiredVisionSize = std::max(maxDimension, minVisionSize);
     
-    // 4. 应用合理的放大系数（减小放大倍数）
-    requiredVisionSize *= m_scaleUpRatio; // 现在是2.2倍放大（之前是3.5倍）
+    // 4. 🔥 渐进式放大系数 - 避免突然的视野变化
+    float dynamicScaleRatio = m_scaleUpRatio;
+    if (!m_isInitialStabilizing) {
+        // 根据当前缩放级别动态调整放大系数
+        float currentZoom = transform().m11();
+        if (currentZoom > 1.0f) {
+            dynamicScaleRatio = qMax(1.5f, m_scaleUpRatio * (2.0f - currentZoom));
+        }
+    }
+    
+    requiredVisionSize *= dynamicScaleRatio;
     
     // 5. 计算目标缩放比例
-    float viewportSize = std::min(width(), height()) * 0.75f; // 从80%调整到75%
-    m_targetZoom = viewportSize / requiredVisionSize;
+    float viewportSize = std::min(width(), height()) * 0.8f; // 80%的视口利用率
+    qreal newTargetZoom = viewportSize / requiredVisionSize;
     
-    // 6. 更严格的缩放范围限制
-    m_targetZoom = qBound(0.4, m_targetZoom, 1.8); // 缩小上限从2.0到1.8
+    // 6. 🔥 缩放变化限制 - 防止剧烈缩放变化
+    if (!m_isInitialStabilizing && m_lastTargetZoom > 0) {
+        float maxZoomChangePerFrame = 0.05f; // 每帧最大5%的缩放变化
+        float zoomChangeRatio = newTargetZoom / m_lastTargetZoom;
+        
+        if (zoomChangeRatio > 1.0f + maxZoomChangePerFrame) {
+            newTargetZoom = m_lastTargetZoom * (1.0f + maxZoomChangePerFrame);
+        } else if (zoomChangeRatio < 1.0f - maxZoomChangePerFrame) {
+            newTargetZoom = m_lastTargetZoom * (1.0f - maxZoomChangePerFrame);
+        }
+    }
     
-    qDebug() << "Vision calculation - rectSize:" << maxDimension 
+    // 7. 更严格的缩放范围限制
+    m_targetZoom = qBound(0.3, newTargetZoom, 2.0);
+    
+    qDebug() << "Vision calculation - balls:" << allPlayerBalls.size()
+             << "rectSize:" << maxDimension 
              << "maxRadius:" << maxRadius 
              << "requiredVision:" << requiredVisionSize 
-             << "targetZoom:" << m_targetZoom;
+             << "targetZoom:" << m_targetZoom
+             << "isStabilizing:" << m_isInitialStabilizing;
 }
 
 qreal GameView::calculatePlayerRadius() const
@@ -454,19 +600,54 @@ QPointF GameView::calculatePlayerCentroid() const
 
 void GameView::adjustZoom()
 {
-    // 平滑缩放过渡
+    // 获取当前缩放
     qreal currentZoom = transform().m11();
     qreal zoomDiff = m_targetZoom - currentZoom;
     
-    if (std::abs(zoomDiff) > 0.001) {
-        // 使用更平滑的过渡速度
-        qreal transitionSpeed = 0.08; // 8%的过渡速度，比之前更快
-        qreal newZoom = currentZoom + zoomDiff * transitionSpeed;
-        
+    // 🔥 更精确的死区检查
+    qreal minZoomDiff = 0.001; // 最小有意义的缩放差异
+    if (std::abs(zoomDiff) <= minZoomDiff) {
+        return; // 差异太小，不需要调整
+    }
+    
+    // 🔥 智能过渡速度 - 根据差异大小调整
+    qreal transitionSpeed;
+    qreal zoomRatio = std::abs(zoomDiff) / currentZoom;
+    
+    if (m_isInitialStabilizing) {
+        // 初始稳定期：更慢的过渡
+        transitionSpeed = 0.03;
+    } else if (zoomRatio > 0.2) {
+        // 大变化：较快的过渡
+        transitionSpeed = 0.12;
+    } else if (zoomRatio > 0.1) {
+        // 中等变化：中等过渡
+        transitionSpeed = 0.08;
+    } else {
+        // 小变化：慢过渡，避免抖动
+        transitionSpeed = 0.04;
+    }
+    
+    // 🔥 使用更平滑的插值函数（easeInOutQuad）
+    qreal t = transitionSpeed;
+    qreal smoothT = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    
+    qreal newZoom = currentZoom + zoomDiff * smoothT;
+    
+    // 确保缩放在合理范围内
+    newZoom = qBound(0.3, newZoom, 2.0);
+    
+    // 🔥 只有当变化足够大时才应用变换
+    if (std::abs(newZoom - currentZoom) > 0.0005) {
         // 重置变换并应用新缩放
         resetTransform();
         scale(newZoom, newZoom);
         m_zoomFactor = newZoom;
+        
+        qDebug() << "Zoom adjusted - current:" << currentZoom 
+                 << "target:" << m_targetZoom 
+                 << "new:" << newZoom 
+                 << "speed:" << transitionSpeed;
     }
 }
 
@@ -585,9 +766,17 @@ void GameView::onGamePaused()
 void GameView::onGameReset()
 {
     qDebug() << "Game reset - View updated";
+    
+    // 🔥 重置视角稳定性状态
+    m_isInitialStabilizing = true;
+    m_stableFrameCount = 0;
+    m_lastCentroid = QPointF(0, 0);
+    m_lastTargetZoom = 1.0;
+    
     // 重置相机
     resetTransform();
     m_zoomFactor = 1.0;
+    m_targetZoom = 1.0;
 }
 
 void GameView::onPlayerAdded(CloneBall* player)
