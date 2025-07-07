@@ -76,8 +76,8 @@ void CloneBall::setMoveDirection(const QVector2D& direction)
     m_moveDirection = direction.normalized();
     updateDirection();
     
-    // 如果有分裂组，则统一控制整个组
-    propagateMovementToGroup(direction);
+    // 🔥 移除统一传播机制，让每个球独立控制
+    // propagateMovementToGroup(direction);
     
     // 立即应用移动
     if (direction.length() > 0.01) {
@@ -381,6 +381,17 @@ void CloneBall::updatePhysics(qreal deltaTime)
 
 void CloneBall::updateMovement()
 {
+    // 🔥 如果球已被移除，立即停止所有移动和更新
+    if (isRemoved()) {
+        if (m_movementTimer) {
+            m_movementTimer->stop();
+        }
+        if (m_decayTimer) {
+            m_decayTimer->stop();
+        }
+        return;
+    }
+    
     const qreal deltaTime = 0.016; // 16ms ≈ 60 FPS
     
     // 如果有移动方向，持续应用移动
@@ -404,6 +415,14 @@ void CloneBall::updateMovement()
 
 void CloneBall::updateScoreDecay()
 {
+    // 🔥 如果球已被移除，停止分数衰减
+    if (isRemoved()) {
+        if (m_decayTimer) {
+            m_decayTimer->stop();
+        }
+        return;
+    }
+    
     applyScoreDecay();
 }
 
@@ -547,11 +566,26 @@ void CloneBall::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
     painter->drawEllipse(QRectF(-radius() * 0.3, -radius() * 0.3, 
                                 radius() * 0.6, radius() * 0.6));
     
-    // 绘制团队标识（小圆点）
-    QColor teamDot = ballColor.darker(50);
-    painter->setBrush(QBrush(teamDot));
-    painter->drawEllipse(QRectF(-radius() * 0.1, -radius() * 0.1, 
-                                radius() * 0.2, radius() * 0.2));
+    // 🔥 绘制队伍字母标识（在球中心）
+    QChar teamLetter = GoBiggerConfig::getTeamLetter(m_teamId);
+    QFont font("Arial", static_cast<int>(radius() * 0.6)); // 字体大小基于球半径
+    font.setBold(true);
+    
+    painter->setFont(font);
+    painter->setPen(QPen(Qt::white, 2)); // 白色字体，2像素描边
+    
+    // 计算文字位置（居中）
+    QFontMetrics fm(font);
+    QRect textRect = fm.boundingRect(teamLetter);
+    QPointF textPos(-textRect.width() / 2.0, textRect.height() / 2.0 - 2);
+    
+    // 先绘制黑色描边
+    painter->setPen(QPen(Qt::black, 3));
+    painter->drawText(textPos, teamLetter);
+    
+    // 再绘制白色字母
+    painter->setPen(QPen(Qt::white, 1));
+    painter->drawText(textPos, teamLetter);
                                 
     // 绘制移动方向箭头（基于GoBigger的to_arrow实现）
     if (m_moveDirection.length() > 0.01) {
@@ -638,13 +672,23 @@ void CloneBall::mergeWith(CloneBall* other)
     // 重置分裂计时器
     m_frameSinceLastSplit = 0;
     
-    // 移除被合并的球
+    // 🔥 彻底移除被合并的球 - 多重保险
     other->remove();
+    
+    // 🔥 强制断开所有连接，避免悬空指针
+    other->setVelocity(QVector2D(0, 0)); // 停止移动
+    other->setVisible(false); // 隐藏
     
     // 从分裂关系中移除
     m_splitChildren.removeOne(other);
     if (other->getSplitParent() == this) {
         other->setSplitParent(nullptr);
+    }
+    
+    // 🔥 如果还在场景中，强制移除
+    if (other->scene() && other->scene()->items().contains(other)) {
+        other->scene()->removeItem(other);
+        qDebug() << "Force removed ball" << other->ballId() << "from scene";
     }
     
     qDebug() << "Ball" << m_ballId << "merged with ball" << other->ballId() 
@@ -1002,4 +1046,30 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
              << "each, original ball score:" << m_score;
     
     return newBalls;
+}
+
+void CloneBall::remove()
+{
+    // 🔥 立即停止所有定时器，防止"尸体漂移"
+    if (m_movementTimer) {
+        m_movementTimer->stop();
+    }
+    if (m_decayTimer) {
+        m_decayTimer->stop();
+    }
+    
+    // 清除移动方向，确保球完全停止
+    m_moveDirection = QVector2D(0, 0);
+    m_velocity = QVector2D(0, 0);
+    
+    // 🔥 立即从场景中移除，防止"尸体"残留
+    if (scene()) {
+        scene()->removeItem(this);
+        qDebug() << "CloneBall" << ballId() << "removed from scene";
+    }
+    
+    // 调用基类的remove函数
+    BaseBall::remove();
+    
+    qDebug() << "CloneBall" << ballId() << "removed and all timers stopped";
 }

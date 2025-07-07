@@ -170,6 +170,11 @@ private:
     std::vector<BaseBall*> getNearbyBalls(float radius = 100.0f);
     std::vector<FoodBall*> getNearbyFood(float radius = 150.0f);
     std::vector<CloneBall*> getNearbyPlayers(float radius = 120.0f);
+
+    // 边界和避障相关
+    bool isNearBorder(const QPointF& position, float threshold = 200.0f) const;
+    QPointF getAvoidBorderDirection(const QPointF& position) const;
+    QPointF getSafeDirection(const QPointF& targetDirection) const;
 };
 
 } // namespace AI

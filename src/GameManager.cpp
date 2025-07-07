@@ -397,10 +397,15 @@ void GameManager::updateGame()
     
     for (BaseBall* ball : m_allBalls) {
         if (ball && !ball->isRemoved()) {
-            // 让每个球自己更新移动（对于孢子球很重要）
+            // 让每个球自己更新移动（对于孢子球和荆棘球很重要）
             if (ball->ballType() == BaseBall::SPORE_BALL) {
                 SporeBall* spore = static_cast<SporeBall*>(ball);
                 spore->move(QVector2D(0, 0), deltaTime); // 孢子使用自己的移动逻辑
+            }
+            // 🔥 荆棘球也需要更新移动状态（吃孢子后的滑行）
+            else if (ball->ballType() == BaseBall::THORNS_BALL) {
+                ThornsBall* thorns = static_cast<ThornsBall*>(ball);
+                thorns->move(QVector2D(0, 0), deltaTime); // 荆棘球更新移动状态
             }
             // 其他类型的球通过physics自动更新
         }
@@ -857,9 +862,10 @@ QVector<BaseBall*> GameManager::getMovingBalls() const
         }
     }
     
-    // 荆棘球：只有正在移动的荆棘球才参与碰撞检测
+    // 荆棘球：所有荆棘球都参与碰撞检测（无论是否移动）
+    // 因为静止的荆棘球也需要检测与孢子的碰撞
     for (ThornsBall* thorns : m_thornsBalls) {
-        if (thorns && !thorns->isRemoved() && thorns->isMoving()) {
+        if (thorns && !thorns->isRemoved()) {
             movingBalls.append(thorns);
         }
     }

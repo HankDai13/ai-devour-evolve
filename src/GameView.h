@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QSet>
 #include <QVector2D>
+#include <QMap>
 
 class GameManager;
 class CloneBall;
@@ -50,6 +51,7 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    void paintEvent(QPaintEvent *event) override; // 🔥 添加paintEvent以绘制UI层
     
     // 渲染优化
     void drawBackground(QPainter *painter, const QRectF &rect) override;
@@ -125,6 +127,14 @@ private:
     // 玩家操作
     void handleSplitAction();
     void handleEjectAction();
+
+    // 队伍管理
+    int assignTeamForNewAI(); // 为新AI分配队伍
+    void updateTeamScores(); // 更新队伍分数
+    
+    // 队伍积分和排行榜
+    QMap<int, float> calculateTeamScores() const;
+    void drawTeamLeaderboard(QPainter* painter);
 };
 
 #endif // GAMEVIEW_H

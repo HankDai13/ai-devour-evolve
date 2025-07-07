@@ -190,6 +190,28 @@ inline const QColor& getStaticFoodColor(int index) {
     return foodColors[index % 4];
 }
 
+// 获取队伍字母标识
+inline QChar getTeamLetter(int teamId) {
+    if (teamId >= 0 && teamId < 8) {
+        return QChar('A' + teamId); // 0队=A, 1队=B, 2队=C...
+    }
+    return QChar('?');
+}
+
+// 获取队伍颜色
+inline QColor getTeamColor(int teamId) {
+    QVector<QColor> teamColors = getPlayerColors();
+    if (teamId >= 0 && teamId < teamColors.size()) {
+        return teamColors[teamId];
+    }
+    return QColor(128, 128, 128); // 默认灰色
+}
+
+// 队伍机制参数
+constexpr int MAX_TEAMS = 8;                       // 最大队伍数量
+constexpr int MAX_PLAYERS_PER_TEAM = 2;            // 每队最大玩家数量
+constexpr int HUMAN_TEAM_ID = 0;                   // 人类玩家默认队伍ID（从0开始）
+
 } // namespace GoBiggerConfig
 
 #endif // GOBIGGERCONFIG_H

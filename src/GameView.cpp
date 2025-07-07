@@ -11,6 +11,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QPaintEvent>
 #include <QTimer>
 #include <QSet>
 #include <QColor>
@@ -123,14 +124,18 @@ void GameView::initializeView()
 
 void GameView::initializePlayer()
 {
-    // 先启动游戏
-    if (m_gameManager) {
-        m_gameManager->startGame();
-        qDebug() << "Game started";
+    // 检查GameManager是否已创建
+    if (!m_gameManager) {
+        qDebug() << "GameManager not created yet, cannot initialize player!";
+        return;
     }
     
+    // 先启动游戏
+    m_gameManager->startGame();
+    qDebug() << "Game started";
+    
     // 创建主玩家
-    m_mainPlayer = m_gameManager->createPlayer(0, 0, QPointF(0, 0)); // 团队0，玩家0，中心位置
+    m_mainPlayer = m_gameManager->createPlayer(GoBiggerConfig::HUMAN_TEAM_ID, 0, QPointF(0, 0)); // 人类玩家使用1队，玩家0，中心位置
     
     if (m_mainPlayer) {
         // 设置一个合理的初始分数，让玩家球更大一些
@@ -284,7 +289,9 @@ void GameView::updateGameView()
 {
     processInput();
     updateCamera();
-    // 移除视野裁剪更新，恢复简单模式
+    
+    // 🔥 触发UI层重绘，确保排行榜及时更新
+    viewport()->update();
 }
 
 void GameView::processInput()
@@ -563,6 +570,49 @@ void GameView::calculateIntelligentZoomGoBigger(const QVector<CloneBall*>& allPl
              << "requiredVision:" << requiredVisionSize 
              << "targetZoom:" << m_targetZoom
              << "isStabilizing:" << m_isInitialStabilizing;
+}
+
+int GameView::assignTeamForNewAI()
+{
+    if (!m_gameManager) return 1;
+    
+    // 🔥 队伍分配规则：每队最多2人，依次填满
+    // 队伍0：人类玩家 + 第1个AI
+    // 队伍1：第2个AI + 第3个AI  
+    // 队伍2：第4个AI + 第5个AI
+    // 以此类推...
+    
+    auto aiPlayers = m_gameManager->getAIPlayers();
+    int totalAI = aiPlayers.size();
+    
+    // 统计各队当前人数
+    QMap<int, int> teamPlayerCount;
+    
+    // 人类玩家占用队伍0的1个位置
+    teamPlayerCount[0] = 1;
+    
+    // 统计现有AI的队伍分布
+    for (auto* ai : aiPlayers) {
+        if (ai && ai->getPlayerBall()) {
+            int teamId = ai->getPlayerBall()->teamId();
+            teamPlayerCount[teamId]++;
+        }
+    }
+    
+    // 从队伍0开始，找到第一个未满的队伍
+    for (int teamId = 0; teamId < GoBiggerConfig::MAX_TEAMS; ++teamId) {
+        int currentCount = teamPlayerCount.value(teamId, 0);
+        if (currentCount < GoBiggerConfig::MAX_PLAYERS_PER_TEAM) {
+            qDebug() << "Assigning new AI to team" << teamId 
+                     << "(current count:" << currentCount << ")";
+            return teamId;
+        }
+    }
+    
+    // 如果所有队伍都满了，循环分配
+    int teamId = totalAI % GoBiggerConfig::MAX_TEAMS;
+    qDebug() << "All teams full, cycling to team" << teamId;
+    return teamId;
 }
 
 qreal GameView::calculatePlayerRadius() const
@@ -872,8 +922,11 @@ void GameView::addAIPlayer()
     
     static int aiPlayerCount = 1;
     
-    // 使用GameManager添加AI玩家 - 使用teamId=1区分于主玩家(teamId=0), 默认使用FOOD_HUNTER策略
-    bool success = m_gameManager->addAIPlayerWithStrategy(1, aiPlayerCount++, 
+    // 🔥 使用新的队伍分配逻辑
+    int teamId = assignTeamForNewAI();
+    
+    // 使用分配的队伍ID添加AI玩家，默认使用FOOD_HUNTER策略
+    bool success = m_gameManager->addAIPlayerWithStrategy(teamId, aiPlayerCount++, 
                                                          GoBigger::AI::AIStrategy::FOOD_HUNTER, "");
     
     if (success && m_aiDebugWidget) {
@@ -896,13 +949,15 @@ void GameView::addRLAIPlayer()
     
     static int rlAiPlayerCount = 1;
     
-    // 使用默认的RL模型路径 - 使用teamId=2区分于主玩家和普通AI
-    // 注意：如果模型文件不存在，会自动回退到AGGRESSIVE策略
+    // 🔥 使用统一的队伍分配逻辑
+    int teamId = assignTeamForNewAI();
+    
+    // 使用默认的RL模型路径
     QString modelPath = "assets/ai_models/default_rl_model.onnx";
     
-    qDebug() << "Adding RL-AI player with model:" << modelPath;
+    qDebug() << "Adding RL-AI player to team" << teamId << "with model:" << modelPath;
     
-    bool success = m_gameManager->addAIPlayerWithStrategy(2, 1000 + rlAiPlayerCount++, 
+    bool success = m_gameManager->addAIPlayerWithStrategy(teamId, 1000 + rlAiPlayerCount++, 
                                                          GoBigger::AI::AIStrategy::MODEL_BASED, modelPath);
     
     if (success && m_aiDebugWidget) {
@@ -1034,8 +1089,11 @@ void GameView::addAIPlayerWithDialog()
             return;
         }
         
-        // 根据策略类型分配不同的teamId
-        int teamId = 10 + static_cast<int>(strategy); // 从10开始，避免与现有冲突
+        // 🔥 使用统一的队伍分配逻辑
+        int teamId = assignTeamForNewAI();
+        
+        qDebug() << "Adding AI with strategy" << static_cast<int>(strategy) 
+                 << "to team" << teamId;
         
         bool success = m_gameManager->addAIPlayerWithStrategy(teamId, aiPlayerCount++, strategy, modelPath);
         
@@ -1115,4 +1173,96 @@ QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) c
     }
     
     return QPointF(0, 0);
+}
+
+// ============ 队伍积分和排行榜功能实现 ============
+
+QMap<int, float> GameView::calculateTeamScores() const
+{
+    QMap<int, float> teamScores;
+    
+    if (!m_gameManager) return teamScores;
+    
+    // 统计所有玩家球的分数
+    QVector<CloneBall*> allPlayers = m_gameManager->getPlayers();
+    for (CloneBall* player : allPlayers) {
+        if (player && !player->isRemoved()) {
+            int teamId = player->teamId();
+            teamScores[teamId] += player->score();
+        }
+    }
+    
+    return teamScores;
+}
+
+void GameView::drawTeamLeaderboard(QPainter* painter)
+{
+    if (!painter) return;
+    
+    QMap<int, float> teamScores = calculateTeamScores();
+    if (teamScores.isEmpty()) return;
+    
+    // 将队伍按分数排序
+    QVector<QPair<int, float>> sortedTeams;
+    for (auto it = teamScores.begin(); it != teamScores.end(); ++it) {
+        sortedTeams.append(qMakePair(it.key(), it.value()));
+    }
+    
+    std::sort(sortedTeams.begin(), sortedTeams.end(), 
+              [](const QPair<int, float>& a, const QPair<int, float>& b) {
+                  return a.second > b.second; // 按分数降序排列
+              });
+    
+    // 绘制排行榜背景
+    painter->save();
+    QRectF leaderboardRect(10, 10, 250, 30 + sortedTeams.size() * 25);
+    painter->fillRect(leaderboardRect, QColor(0, 0, 0, 128)); // 半透明黑色背景
+    painter->setPen(QPen(QColor(255, 255, 255), 2));
+    painter->drawRect(leaderboardRect);
+    
+    // 绘制标题
+    painter->setFont(QFont("Arial", 14, QFont::Bold));
+    painter->setPen(QColor(255, 255, 255));
+    painter->drawText(20, 30, "Team Leaderboard");
+    
+    // 绘制各队伍分数
+    painter->setFont(QFont("Arial", 12));
+    int yPos = 55;
+    for (int i = 0; i < sortedTeams.size() && i < 8; ++i) { // 最多显示8个队伍
+        int teamId = sortedTeams[i].first;
+        float score = sortedTeams[i].second;
+        
+        // 获取队伍颜色和字母
+        QColor teamColor = GoBiggerConfig::getTeamColor(teamId);
+        QChar teamLetter = GoBiggerConfig::getTeamLetter(teamId);
+        
+        // 绘制排名
+        painter->setPen(QColor(255, 255, 255));
+        painter->drawText(20, yPos, QString("#%1").arg(i + 1));
+        
+        // 绘制队伍字母（带颜色）
+        painter->setPen(teamColor);
+        painter->drawText(50, yPos, QString("Team %1").arg(teamLetter));
+        
+        // 绘制分数
+        painter->setPen(QColor(255, 255, 255));
+        painter->drawText(130, yPos, QString("%1").arg((int)score));
+        
+        yPos += 25;
+    }
+    
+    painter->restore();
+}
+
+void GameView::paintEvent(QPaintEvent *event)
+{
+    // 首先调用基类的paintEvent来绘制场景内容
+    QGraphicsView::paintEvent(event);
+    
+    // 然后在视图层绘制UI元素（排行榜等）
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    // 🔥 在视图坐标系中绘制排行榜，不受场景变换影响
+    drawTeamLeaderboard(&painter);
 }

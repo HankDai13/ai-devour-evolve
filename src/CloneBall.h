@@ -68,6 +68,7 @@ public:
     void move(const QVector2D& direction, qreal duration) override;
     bool canEat(BaseBall* other) const override;
     void eat(BaseBall* other) override;
+    void remove() override;  // 🔥 重写remove函数以停止定时器
 
 signals:
     void splitPerformed(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
