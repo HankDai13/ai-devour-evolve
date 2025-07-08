@@ -118,10 +118,11 @@ void GameManager::resetGame()
 
 CloneBall* GameManager::createPlayer(int teamId, int playerId, const QPointF& position)
 {
-    // 检查是否已存在相同的玩家
+    // 🔥 修复：更严格的重复创建检查，防止人类玩家被重复创建
     for (CloneBall* player : m_players) {
-        if (player->teamId() == teamId && player->playerId() == playerId) {
-            qDebug() << "Player already exists:" << teamId << playerId;
+        if (player && !player->isRemoved() && 
+            player->teamId() == teamId && player->playerId() == playerId) {
+            qDebug() << "Player already exists:" << teamId << playerId << "- returning existing player";
             return player;
         }
     }
@@ -142,6 +143,7 @@ CloneBall* GameManager::createPlayer(int teamId, int playerId, const QPointF& po
     // 连接玩家特有的信号
     connect(player, &CloneBall::splitPerformed, this, &GameManager::handlePlayerSplit);
     connect(player, &CloneBall::sporeEjected, this, &GameManager::handleSporeEjected);
+    connect(player, &CloneBall::thornsEaten, this, &GameManager::handleThornsEaten); // 🔥 添加荆棘球信号连接
     
     emit playerAdded(player);
     qDebug() << "Player created:" << teamId << playerId << "at" << spawnPos;

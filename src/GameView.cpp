@@ -130,18 +130,63 @@ void GameView::initializePlayer()
         return;
     }
     
-    // 检查是否已有主玩家
+    // 🔥 修复：更严格的重复创建检查
     if (m_mainPlayer && !m_mainPlayer->isRemoved()) {
         qDebug() << "Main player already exists, skipping initialization";
         return;
     }
     
-    // 先启动游戏
-    m_gameManager->startGame();
-    qDebug() << "Game started";
+    // 🔥 修复：检查GameManager中所有现有玩家，防止重复创建
+    QVector<CloneBall*> allPlayers = m_gameManager->getPlayers();
+    for (CloneBall* player : allPlayers) {
+        if (player && !player->isRemoved() && 
+            player->teamId() == GoBiggerConfig::HUMAN_TEAM_ID && player->playerId() == 0) {
+            qDebug() << "Human player already exists in GameManager, reusing it. Player ID:" << player->ballId();
+            m_mainPlayer = player;
+            
+            // 重新设置视角
+            QPointF playerPos = m_mainPlayer->pos();
+            float initialRadius = m_mainPlayer->radius();
+            float initialVisionSize = initialRadius * 12.0f;
+            float viewportSize = std::min(width(), height()) * 0.8f;
+            qreal initialZoom = viewportSize / initialVisionSize;
+            initialZoom = qBound(0.5, initialZoom, 1.5);
+            
+            resetTransform();
+            scale(initialZoom, initialZoom);
+            m_zoomFactor = initialZoom;
+            m_targetZoom = initialZoom;
+            m_lastTargetZoom = initialZoom;
+            centerOn(playerPos);
+            
+            m_isInitialStabilizing = true;
+            m_stableFrameCount = 0;
+            
+            qDebug() << "Reused existing human player with ball ID:" << m_mainPlayer->ballId();
+            return;
+        }
+    }
     
-    // 创建主玩家
-    m_mainPlayer = m_gameManager->createPlayer(GoBiggerConfig::HUMAN_TEAM_ID, 0, QPointF(0, 0)); // 人类玩家使用1队，玩家0，中心位置
+    // 🔥 修复：确保游戏已启动，但只启动一次
+    if (!m_gameManager->isGameRunning()) {
+        m_gameManager->startGame();
+        qDebug() << "Game started";
+    }
+    
+    // 🔥 再次检查，确保没有其他代码路径创建了玩家
+    allPlayers = m_gameManager->getPlayers();
+    for (CloneBall* player : allPlayers) {
+        if (player && !player->isRemoved() && 
+            player->teamId() == GoBiggerConfig::HUMAN_TEAM_ID && player->playerId() == 0) {
+            qDebug() << "Found human player created by startGame, reusing it. Player ID:" << player->ballId();
+            m_mainPlayer = player;
+            return;
+        }
+    }
+    
+    // 创建主玩家 - 只有在确实没有的情况下才创建
+    qDebug() << "Creating new human player...";
+    m_mainPlayer = m_gameManager->createPlayer(GoBiggerConfig::HUMAN_TEAM_ID, 0, QPointF(0, 0));
     
     if (m_mainPlayer) {
         // 设置一个合理的初始分数，让玩家球更大一些

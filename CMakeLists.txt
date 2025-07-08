@@ -132,55 +132,9 @@ add_executable(${PROJECT_NAME}
     ${UI_FILES}
 )
 
-# AI测试程序
-add_executable(ai-integration-test
-    src/main_ai_test.cpp
-    # 重用现有的源文件（除了main.cpp）
-    src/DemoQtVS.cpp
-    src/GameView.cpp
-    src/PlayerCell.cpp
-    src/FoodItem.cpp
-    src/BaseBall.cpp
-    src/CloneBall.cpp
-    src/FoodBall.cpp
-    src/SporeBall.cpp
-    src/ThornsBall.cpp
-    src/GameManager.cpp
-    src/QuadTree.cpp
-    src/SimpleAIPlayer.cpp
-    src/ONNXInference.cpp
-    src/MultiPlayerManager.cpp
-    src/AIDebugWidget.cpp
-    ${HEADERS}
-    ${UI_FILES}
-)
-
-# 多玩家测试程序
-add_executable(multiplayer-test
-    src/multiplayer_test.cpp
-    # 重用现有的源文件（除了main.cpp）
-    src/DemoQtVS.cpp
-    src/GameView.cpp
-    src/PlayerCell.cpp
-    src/FoodItem.cpp
-    src/BaseBall.cpp
-    src/CloneBall.cpp
-    src/FoodBall.cpp
-    src/SporeBall.cpp
-    src/ThornsBall.cpp
-    src/GameManager.cpp
-    src/QuadTree.cpp
-    src/SimpleAIPlayer.cpp
-    src/ONNXInference.cpp
-    src/MultiPlayerManager.cpp
-    src/AIDebugWidget.cpp
-    ${HEADERS}
-    ${UI_FILES}
-)
-
-# 简单控制台测试程序
-add_executable(simple-console-test
-    src/simple_console_test.cpp
+# AI崩溃调试程序
+add_executable(ai-crash-debug
+    src/ai_crash_debug.cpp
     # 重用核心源文件
     src/BaseBall.cpp
     src/CloneBall.cpp
@@ -191,7 +145,6 @@ add_executable(simple-console-test
     src/QuadTree.cpp
     src/SimpleAIPlayer.cpp
     src/ONNXInference.cpp
-    src/AIDebugWidget.cpp
     # 包含必要的头文件
     src/GoBiggerConfig.h
     src/BaseBall.h
@@ -203,31 +156,108 @@ add_executable(simple-console-test
     src/QuadTree.h
     src/SimpleAIPlayer.h
     src/ONNXInference.h
-    src/AIDebugWidget.h
 )
 
-# 简单AI演示程序
-add_executable(simple-ai-demo
-    src/simple_ai_demo.cpp
-    # 重用现有的源文件（除了main.cpp）
-    src/DemoQtVS.cpp
-    src/GameView.cpp
-    src/PlayerCell.cpp
-    src/FoodItem.cpp
-    src/BaseBall.cpp
-    src/CloneBall.cpp
-    src/FoodBall.cpp
-    src/SporeBall.cpp
-    src/ThornsBall.cpp
-    src/GameManager.cpp
-    src/QuadTree.cpp
-    src/SimpleAIPlayer.cpp
-    src/ONNXInference.cpp
-    src/MultiPlayerManager.cpp
-    src/AIDebugWidget.cpp
-    ${HEADERS}
-    ${UI_FILES}
+set_target_properties(ai-crash-debug PROPERTIES
+    WIN32_EXECUTABLE TRUE
 )
+
+# AI测试程序 (注释掉以避免编译问题)
+# add_executable(ai-integration-test
+#     src/main_ai_test.cpp
+#     # 重用现有的源文件（除了main.cpp）
+#     src/DemoQtVS.cpp
+#     src/GameView.cpp
+#     src/PlayerCell.cpp
+#     src/FoodItem.cpp
+#     src/BaseBall.cpp
+#     src/CloneBall.cpp
+#     src/FoodBall.cpp
+#     src/SporeBall.cpp
+#     src/ThornsBall.cpp
+#     src/GameManager.cpp
+#     src/QuadTree.cpp
+#     src/SimpleAIPlayer.cpp
+#     src/ONNXInference.cpp
+#     src/MultiPlayerManager.cpp
+#     src/AIDebugWidget.cpp
+#     ${HEADERS}
+#     ${UI_FILES}
+# )
+
+# 多玩家测试程序 (注释掉以避免编译问题)
+# add_executable(multiplayer-test
+#     src/multiplayer_test.cpp
+#     # 重用现有的源文件（除了main.cpp）
+#     src/DemoQtVS.cpp
+#     src/GameView.cpp
+#     src/PlayerCell.cpp
+#     src/FoodItem.cpp
+#     src/BaseBall.cpp
+#     src/CloneBall.cpp
+#     src/FoodBall.cpp
+#     src/SporeBall.cpp
+#     src/ThornsBall.cpp
+#     src/GameManager.cpp
+#     src/QuadTree.cpp
+#     src/SimpleAIPlayer.cpp
+#     src/ONNXInference.cpp
+#     src/MultiPlayerManager.cpp
+#     src/AIDebugWidget.cpp
+#     ${HEADERS}
+#     ${UI_FILES}
+# )
+
+# 简单控制台测试程序 (注释掉以避免编译问题)
+# add_executable(simple-console-test
+#     src/simple_console_test.cpp
+#     # 重用核心源文件
+#     src/BaseBall.cpp
+#     src/CloneBall.cpp
+#     src/FoodBall.cpp
+#     src/SporeBall.cpp
+#     src/ThornsBall.cpp
+#     src/GameManager.cpp
+#     src/QuadTree.cpp
+#     src/SimpleAIPlayer.cpp
+#     src/ONNXInference.cpp
+#     src/AIDebugWidget.cpp
+#     # 包含必要的头文件
+#     src/GoBiggerConfig.h
+#     src/BaseBall.h
+#     src/CloneBall.h
+#     src/FoodBall.h
+#     src/SporeBall.h
+#     src/ThornsBall.h
+#     src/GameManager.h
+#     src/QuadTree.h
+#     src/SimpleAIPlayer.h
+#     src/ONNXInference.h
+#     src/AIDebugWidget.h
+# )
+
+# 简单AI演示程序 (注释掉以避免编译问题)
+# add_executable(simple-ai-demo
+#     src/simple_ai_demo.cpp
+#     # 重用现有的源文件（除了main.cpp）
+#     src/DemoQtVS.cpp
+#     src/GameView.cpp
+#     src/PlayerCell.cpp
+#     src/FoodItem.cpp
+#     src/BaseBall.cpp
+#     src/CloneBall.cpp
+#     src/FoodBall.cpp
+#     src/SporeBall.cpp
+#     src/ThornsBall.cpp
+#     src/GameManager.cpp
+#     src/QuadTree.cpp
+#     src/SimpleAIPlayer.cpp
+#     src/ONNXInference.cpp
+#     src/MultiPlayerManager.cpp
+#     src/AIDebugWidget.cpp
+#     ${HEADERS}
+#     ${UI_FILES}
+# )
 
 # 设置头文件包含目录
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -236,34 +266,40 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
 ) 
 
-target_include_directories(ai-integration-test PRIVATE
+target_include_directories(ai-crash-debug PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_BINARY_DIR}  # 为自动生成的MOC文件
     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
 ) 
+
+# target_include_directories(ai-integration-test PRIVATE
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src
+#     ${CMAKE_CURRENT_BINARY_DIR}  # 为自动生成的MOC文件
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
+# ) 
 
 # target_include_directories(simple-ai-test PRIVATE
 #     ${CMAKE_CURRENT_SOURCE_DIR}/src
 #     ${CMAKE_CURRENT_BINARY_DIR}
 # ) 
 
-target_include_directories(simple-console-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_BINARY_DIR}
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
-)
+# target_include_directories(simple-console-test PRIVATE
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src
+#     ${CMAKE_CURRENT_BINARY_DIR}
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
+# )
 
-target_include_directories(multiplayer-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_BINARY_DIR}
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
-) 
+# target_include_directories(multiplayer-test PRIVATE
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src
+#     ${CMAKE_CURRENT_BINARY_DIR}
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
+# ) 
 
-target_include_directories(simple-ai-demo PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_BINARY_DIR}
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
-)
+# target_include_directories(simple-ai-demo PRIVATE
+#     ${CMAKE_CURRENT_SOURCE_DIR}/src
+#     ${CMAKE_CURRENT_BINARY_DIR}
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_INCLUDE_DIRS}>
+# )
 
 # 将Qt6和Torch的库链接到我们的程序上
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -274,13 +310,21 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
 )
 
-target_link_libraries(ai-integration-test PRIVATE
+target_link_libraries(ai-crash-debug PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
     "${TORCH_LIBRARIES}"
     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
 )
+
+# target_link_libraries(ai-integration-test PRIVATE
+#     Qt6::Core
+#     Qt6::Gui
+#     Qt6::Widgets
+#     "${TORCH_LIBRARIES}"
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
+# )
 
 # target_link_libraries(simple-ai-test PRIVATE
 #     Qt6::Core
@@ -289,55 +333,59 @@ target_link_libraries(ai-integration-test PRIVATE
 #     "${TORCH_LIBRARIES}"
 # )
 
-target_link_libraries(simple-console-test PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
-)
+# target_link_libraries(simple-console-test PRIVATE
+#     Qt6::Core
+#     Qt6::Gui
+#     Qt6::Widgets
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
+# )
 
-target_link_libraries(multiplayer-test PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
-)
+# target_link_libraries(multiplayer-test PRIVATE
+#     Qt6::Core
+#     Qt6::Gui
+#     Qt6::Widgets
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
+# )
 
-target_link_libraries(simple-ai-demo PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
-)
+# target_link_libraries(simple-ai-demo PRIVATE
+#     Qt6::Core
+#     Qt6::Gui
+#     Qt6::Widgets
+#     $<$<BOOL:${HAS_ONNXRUNTIME}>:${ONNXRUNTIME_LIBRARIES}>
+# )
 
 # 对于Windows，解决LibTorch的一个常见链接问题
 if(WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
-    target_compile_definitions(ai-integration-test PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
-    target_compile_definitions(simple-console-test PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
-    target_compile_definitions(multiplayer-test PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
-    target_compile_definitions(simple-ai-demo PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+    target_compile_definitions(ai-crash-debug PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+    # target_compile_definitions(ai-integration-test PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+    # target_compile_definitions(simple-console-test PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+    # target_compile_definitions(multiplayer-test PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
+    # target_compile_definitions(simple-ai-demo PRIVATE -D_GLIBCXX_USE_CXX11_ABI=0)
     # 只在MinGW下禁用某些警告
     if(MINGW)
         target_compile_options(${PROJECT_NAME} PRIVATE -Wno-deprecated-declarations)
-        target_compile_options(ai-integration-test PRIVATE -Wno-deprecated-declarations)
-        target_compile_options(simple-console-test PRIVATE -Wno-deprecated-declarations)
-        target_compile_options(multiplayer-test PRIVATE -Wno-deprecated-declarations)
-        target_compile_options(simple-ai-demo PRIVATE -Wno-deprecated-declarations)
+        target_compile_options(ai-crash-debug PRIVATE -Wno-deprecated-declarations)
+        # target_compile_options(ai-integration-test PRIVATE -Wno-deprecated-declarations)
+        # target_compile_options(simple-console-test PRIVATE -Wno-deprecated-declarations)
+        # target_compile_options(multiplayer-test PRIVATE -Wno-deprecated-declarations)
+        # target_compile_options(simple-ai-demo PRIVATE -Wno-deprecated-declarations)
     endif()
     # MSVC特定设置
     if(MSVC)
         target_compile_options(${PROJECT_NAME} PRIVATE /W3)
-        target_compile_options(ai-integration-test PRIVATE /W3)
-        target_compile_options(simple-console-test PRIVATE /W3)
-        target_compile_options(multiplayer-test PRIVATE /W3)
-        target_compile_options(simple-ai-demo PRIVATE /W3)
+        target_compile_options(ai-crash-debug PRIVATE /W3)
+        # target_compile_options(ai-integration-test PRIVATE /W3)
+        # target_compile_options(simple-console-test PRIVATE /W3)
+        # target_compile_options(multiplayer-test PRIVATE /W3)
+        # target_compile_options(simple-ai-demo PRIVATE /W3)
         # 设置为多线程运行库
         set_property(TARGET ${PROJECT_NAME} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        set_property(TARGET ai-integration-test PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        set_property(TARGET simple-console-test PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        set_property(TARGET multiplayer-test PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-        set_property(TARGET simple-ai-demo PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        set_property(TARGET ai-crash-debug PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        # set_property(TARGET ai-integration-test PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        # set_property(TARGET simple-console-test PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        # set_property(TARGET multiplayer-test PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        # set_property(TARGET simple-ai-demo PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     endif()
 endif()
 
@@ -349,29 +397,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     $<$<BOOL:${HAS_ONNXRUNTIME}>:HAS_ONNXRUNTIME>
 )
 
-target_compile_definitions(ai-integration-test PRIVATE
+target_compile_definitions(ai-crash-debug PRIVATE
     QT_DISABLE_DEPRECATED_BEFORE=0x060000  # 禁用Qt 6.0之前的废弃API
-    $<$<CONFIG:Debug>:DEBUG>
-    $<$<CONFIG:Release>:NDEBUG>
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:HAS_ONNXRUNTIME>
-)
-
-target_compile_definitions(simple-console-test PRIVATE
-    QT_DISABLE_DEPRECATED_BEFORE=0x060000
-    $<$<CONFIG:Debug>:DEBUG>
-    $<$<CONFIG:Release>:NDEBUG>
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:HAS_ONNXRUNTIME>
-)
-
-target_compile_definitions(multiplayer-test PRIVATE
-    QT_DISABLE_DEPRECATED_BEFORE=0x060000
-    $<$<CONFIG:Debug>:DEBUG>
-    $<$<CONFIG:Release>:NDEBUG>
-    $<$<BOOL:${HAS_ONNXRUNTIME}>:HAS_ONNXRUNTIME>
-)
-
-target_compile_definitions(simple-ai-demo PRIVATE
-    QT_DISABLE_DEPRECATED_BEFORE=0x060000
     $<$<CONFIG:Debug>:DEBUG>
     $<$<CONFIG:Release>:NDEBUG>
     $<$<BOOL:${HAS_ONNXRUNTIME}>:HAS_ONNXRUNTIME>

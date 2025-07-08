@@ -60,6 +60,9 @@ public:
     void stopAI();
     bool isAIActive() const { return m_aiActive; }
     
+    // 🔥 新增：安全初始化方法
+    void initializeWithPlayerBall(CloneBall* playerBall);
+    
     // 获取关联的玩家球
     CloneBall* getPlayerBall() const { return m_playerBall; }
     
@@ -124,6 +127,17 @@ private:
     mutable QPointF m_lastPosition; // 上次的位置
     mutable int m_borderCollisionCount; // 边界碰撞计数
     
+    // 🔥 新增：目标放弃机制
+    mutable QMap<int, int> m_failedTargetAttempts; // 失败尝试次数 (foodId -> attempts)
+    mutable QSet<int> m_abandonedTargets; // 已放弃的目标ID集合
+    mutable FoodBall* m_lockedTarget; // 当前锁定的目标
+    mutable int m_targetLockDuration; // 目标锁定持续时间
+    
+    // 🔥 新增：Aggressive策略的锁定追杀模式
+    mutable CloneBall* m_huntTarget; // 锁定追杀的目标
+    mutable int m_huntModeFrames; // 追杀模式持续帧数
+    mutable QPointF m_lastHuntTargetPos; // 上次追杀目标位置
+    
     // 不同策略的实现
     AIAction makeRandomDecision();
     AIAction makeFoodHunterDecision();
@@ -180,7 +194,7 @@ private:
 
     // 获取附近的球体信息
     std::vector<BaseBall*> getNearbyBalls(float radius = 100.0f);
-    std::vector<FoodBall*> getNearbyFood(float radius = 150.0f);
+    std::vector<FoodBall*> getNearbyFood(float radius = 150.0f) const;
     std::vector<CloneBall*> getNearbyPlayers(float radius = 120.0f);
 
     // 边界和避障相关
