@@ -108,10 +108,21 @@ private:
     bool m_aiActive;
     int m_decisionInterval; // 决策间隔（毫秒）
     AIStrategy m_strategy;
+
+    // Target locking
+    BaseBall* m_currentTarget;
+    int m_targetLockFrames;
     
     // 模型推理相关
     std::unique_ptr<ONNXInference> m_onnxInference;
     int m_observationSize; // 观察向量大小（默认400）
+    
+    // 🔥 新增：避免打转和卡墙的状态记录
+    mutable QVector<QPointF> m_recentDirections; // 最近的移动方向历史
+    mutable QPointF m_lastAvoidDirection; // 上次的避障方向
+    mutable int m_stuckFrameCount; // 卡住的帧数计数
+    mutable QPointF m_lastPosition; // 上次的位置
+    mutable int m_borderCollisionCount; // 边界碰撞计数
     
     // 不同策略的实现
     AIAction makeRandomDecision();
@@ -123,6 +134,7 @@ private:
     AIAction makeSmartFoodHunterDecision();     // 智能食物猎手
     AIAction makeThreatAwareDecision();         // 威胁感知决策
     AIAction makeCoordinatedDecision();         // 多球协调决策
+    AIAction makeCoordinatedFoodHunt();         // 协调的食物搜索（分裂状态下使用）
     
     // 威胁评估系统
     struct ThreatInfo {
@@ -172,9 +184,10 @@ private:
     std::vector<CloneBall*> getNearbyPlayers(float radius = 120.0f);
 
     // 边界和避障相关
-    bool isNearBorder(const QPointF& position, float threshold = 200.0f) const;
+    bool isNearBorder(const QPointF& position, float threshold = 150.0f) const;
     QPointF getAvoidBorderDirection(const QPointF& position) const;
     QPointF getSafeDirection(const QPointF& targetDirection) const;
+    QPointF getWallTangentDirection(const QPointF& position) const; // 🔥 新增：沿墙移动方向
 };
 
 } // namespace AI

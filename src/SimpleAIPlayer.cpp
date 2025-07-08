@@ -24,8 +24,13 @@ SimpleAIPlayer::SimpleAIPlayer(CloneBall* playerBall, QObject* parent)
     , m_aiActive(false)
     , m_decisionInterval(200) // 默认200ms决策间隔
     , m_strategy(AIStrategy::FOOD_HUNTER) // 默认食物猎手策略
+    , m_currentTarget(nullptr)
+    , m_targetLockFrames(0)
     , m_onnxInference(std::make_unique<ONNXInference>())
     , m_observationSize(400) // 默认观察向量大小
+    , m_stuckFrameCount(0)
+    , m_lastPosition(0, 0)
+    , m_borderCollisionCount(0)
 {
     // 连接定时器
     connect(m_decisionTimer, &QTimer::timeout, this, &SimpleAIPlayer::makeDecision);
@@ -41,6 +46,9 @@ SimpleAIPlayer::SimpleAIPlayer(CloneBall* playerBall, QObject* parent)
         // 初始化分裂球列表
         m_splitBalls.clear();
         m_splitBalls.append(m_playerBall);
+        
+        // 初始化位置记录
+        m_lastPosition = m_playerBall->pos();
     }
     
     qDebug() << "SimpleAIPlayer created for ball:" << (m_playerBall ? m_playerBall->ballId() : -1)
@@ -93,91 +101,94 @@ void SimpleAIPlayer::makeDecision() {
     }
     
     try {
-        // 🔥 优化：多球协调控制 - 防止球分散太远
-        if (m_splitBalls.size() > 1) {
-            // 计算所有存活球的质心
-            QPointF centerOfMass(0, 0);
-            float totalScore = 0.0f;
-            int aliveCount = 0;
+        // 🔥 修复：为每个分裂球独立决策，而不是统一行动
+        for (CloneBall* ball : m_splitBalls) {
+            if (!ball || ball->isRemoved()) continue;
             
-            for (CloneBall* ball : m_splitBalls) {
-                if (ball && !ball->isRemoved()) {
-                    QPointF pos = ball->pos();
-                    float score = ball->score();
-                    centerOfMass += pos * score; // 按分数加权
-                    totalScore += score;
-                    aliveCount++;
-                }
-            }
+            // 临时设置当前控制的球，用于各种检测和决策
+            CloneBall* originalPlayerBall = m_playerBall;
+            m_playerBall = ball;
             
-            if (aliveCount > 1 && totalScore > 0) {
-                centerOfMass /= totalScore;
+            AIAction action;
+            
+            // 🔥 分裂球协调逻辑：只有在严重分散时才强制聚拢
+            if (m_splitBalls.size() > 1) {
+                // 计算球群质心和分散度
+                QPointF centroid(0, 0);
+                float totalScore = 0.0f;
+                int validBalls = 0;
                 
-                // 检查是否有球距离质心太远（可能出视野）
-                const float maxDistance = 150.0f; // 最大允许距离
-                for (CloneBall* ball : m_splitBalls) {
-                    if (ball && !ball->isRemoved()) {
-                        QPointF ballPos = ball->pos();
-                        float distanceToCenter = QLineF(ballPos, centerOfMass).length();
+                for (CloneBall* otherBall : m_splitBalls) {
+                    if (otherBall && !otherBall->isRemoved()) {
+                        QPointF pos = otherBall->pos();
+                        float score = otherBall->score();
+                        centroid += pos * score;
+                        totalScore += score;
+                        validBalls++;
+                    }
+                }
+                
+                if (validBalls > 1 && totalScore > 0) {
+                    centroid /= totalScore;
+                    
+                    QPointF ballPos = ball->pos();
+                    float distanceToCenter = QLineF(ballPos, centroid).length();
+                    
+                    // 只有距离质心太远时才强制聚拢
+                    const float criticalDistance = 200.0f; // 提高临界距离
+                    if (distanceToCenter > criticalDistance) {
+                        qDebug() << "Ball" << ball->ballId() << "too far from group (" 
+                                 << distanceToCenter << "), forcing gather";
                         
-                        if (distanceToCenter > maxDistance) {
-                            // 太远的球向质心聚拢
-                            QPointF direction = centerOfMass - ballPos;
-                            float length = QLineF(QPointF(0,0), direction).length();
-                            if (length > 0) {
-                                direction /= length; // 归一化
-                                
-                                AIAction gatherAction;
-                                gatherAction.dx = direction.x();
-                                gatherAction.dy = direction.y();
-                                gatherAction.type = ActionType::MOVE;
-                                
-                                executeActionForBall(ball, gatherAction);
-                                continue; // 跳过正常决策
-                            }
+                        QPointF direction = centroid - ballPos;
+                        float length = QLineF(QPointF(0,0), direction).length();
+                        if (length > 0) {
+                            direction /= length;
+                            action = AIAction(direction.x(), direction.y(), ActionType::MOVE);
+                            executeActionForBall(ball, action);
+                            m_playerBall = originalPlayerBall; // 恢复主球
+                            continue; // 跳过正常决策
                         }
                     }
                 }
             }
-        }
-        
-        // 为每个分裂球做正常决策
-        for (CloneBall* ball : m_splitBalls) {
-            if (ball && !ball->isRemoved()) {
-                AIAction action;
-                
-                // 临时设置当前控制的球
-                CloneBall* originalPlayerBall = m_playerBall;
-                m_playerBall = ball;
-                
-                // 根据策略选择决策方法
-                switch (m_strategy) {
-                    case AIStrategy::RANDOM:
-                        action = makeRandomDecision();
-                        break;
-                    case AIStrategy::FOOD_HUNTER:
+            
+            // 🔥 为每个球独立执行策略决策
+            switch (m_strategy) {
+                case AIStrategy::RANDOM:
+                    action = makeRandomDecision();
+                    break;
+                case AIStrategy::FOOD_HUNTER:
+                    // 分裂状态下使用协调食物搜索，单球状态下使用普通食物搜索
+                    if (m_splitBalls.size() > 1) {
+                        action = makeCoordinatedFoodHunt();
+                    } else {
                         action = makeFoodHunterDecision();
-                        break;
-                    case AIStrategy::AGGRESSIVE:
-                        action = makeAggressiveDecision();
-                        break;
-                    case AIStrategy::MODEL_BASED:
-                        action = makeModelBasedDecision();
-                        break;
-                }
-                
-                // 执行动作
-                executeActionForBall(ball, action);
-                
-                // 恢复原始主球
-                m_playerBall = originalPlayerBall;
+                    }
+                    break;
+                case AIStrategy::AGGRESSIVE:
+                    action = makeAggressiveDecision();
+                    break;
+                case AIStrategy::MODEL_BASED:
+                    action = makeModelBasedDecision();
+                    break;
             }
+            
+            // 执行动作
+            executeActionForBall(ball, action);
+            
+            // 恢复原始主球
+            m_playerBall = originalPlayerBall;
         }
         
         // 发送第一个球的动作信号（用于UI显示）
         if (!m_splitBalls.isEmpty() && m_splitBalls.first()) {
-            AIAction action = makeFoodHunterDecision(); // 重新计算一次用于显示
-            emit actionExecuted(action);
+            CloneBall* firstBall = m_splitBalls.first();
+            CloneBall* originalPlayerBall = m_playerBall;
+            m_playerBall = firstBall;
+            AIAction displayAction = makeFoodHunterDecision();
+            m_playerBall = originalPlayerBall;
+            emit actionExecuted(displayAction);
         }
         
     } catch (const std::exception& e) {
@@ -249,6 +260,27 @@ AIAction SimpleAIPlayer::makeRandomDecision() {
 }
 
 AIAction SimpleAIPlayer::makeFoodHunterDecision() {
+    // Target locking logic
+    if (m_currentTarget) {
+        if (m_currentTarget->isRemoved() || !m_playerBall->canEat(m_currentTarget)) {
+            m_currentTarget = nullptr;
+            m_targetLockFrames = 0;
+        } else {
+            m_targetLockFrames++;
+            if (m_targetLockFrames < 10) { // Lock target for 10 frames
+                QPointF direction = m_currentTarget->pos() - m_playerBall->pos();
+                float length = QLineF(QPointF(0,0), direction).length();
+                if (length > 0.1f) {
+                    QPointF safeDirection = getSafeDirection(direction / length);
+                    return AIAction(safeDirection.x(), safeDirection.y(), ActionType::MOVE);
+                }
+            } else {
+                m_currentTarget = nullptr; // Unlock after 10 frames
+                m_targetLockFrames = 0;
+            }
+        }
+    }
+
     QPointF playerPos = m_playerBall->pos();
     float playerRadius = m_playerBall->radius();
     float playerScore = m_playerBall->score();
@@ -413,6 +445,7 @@ AIAction SimpleAIPlayer::makeFoodHunterDecision() {
         }
         
         if (bestFood) {
+            m_currentTarget = bestFood;
             QPointF direction = bestFood->pos() - playerPos;
             float length = QLineF(QPointF(0,0), direction).length();
             if (length > 0.1f) {
@@ -448,7 +481,172 @@ AIAction SimpleAIPlayer::makeFoodHunterDecision() {
     return makeRandomDecision();
 }
 
+AIAction SimpleAIPlayer::makeCoordinatedDecision() {
+    if (m_splitBalls.size() <= 1) {
+        return makeFoodHunterDecision(); // Not in a split state
+    }
+
+    // 计算分裂球的质心作为聚集点
+    QPointF centroid(0, 0);
+    float totalScore = 0.0f;
+    int validBalls = 0;
+    
+    for (CloneBall* ball : m_splitBalls) {
+        if (ball && !ball->isRemoved()) {
+            QPointF pos = ball->pos();
+            float score = ball->score();
+            centroid += pos * score; // 按分数加权
+            totalScore += score;
+            validBalls++;
+        }
+    }
+    
+    if (validBalls == 0) {
+        return makeFoodHunterDecision();
+    }
+    
+    centroid /= totalScore;
+
+    // 检查分裂球是否分散过度
+    float maxDistance = 0.0f;
+    float avgDistance = 0.0f;
+    for (CloneBall* ball : m_splitBalls) {
+        if (ball && !ball->isRemoved()) {
+            float distance = QLineF(ball->pos(), centroid).length();
+            maxDistance = std::max(maxDistance, distance);
+            avgDistance += distance;
+        }
+    }
+    avgDistance /= validBalls;
+    
+    // 如果球分散太远，强制聚拢（即使在冷却期）
+    const float maxAllowedDistance = 80.0f; // 最大允许分散距离
+    bool forceGather = (maxDistance > maxAllowedDistance || avgDistance > 50.0f);
+    
+    // 检查是否可以合并
+    bool canMerge = true;
+    for (CloneBall* ball : m_splitBalls) {
+        if (ball && !ball->isRemoved()) {
+            if (ball->frameSinceLastSplit() < GoBiggerConfig::MERGE_DELAY * 60) {
+                canMerge = false;
+                break;
+            }
+        }
+    }
+
+    if (canMerge || forceGather) {
+        // 朝质心聚拢
+        QPointF direction = centroid - m_playerBall->pos();
+        float length = QLineF(QPointF(0,0), direction).length();
+        
+        if (length > 5.0f) { // 如果距离质心较远才移动
+            QPointF safeDirection = getSafeDirection(direction / length);
+            return AIAction(safeDirection.x(), safeDirection.y(), ActionType::MOVE);
+        } else {
+            // 已经很接近质心了，可以执行正常策略但优先近距离食物
+            return makeCoordinatedFoodHunt();
+        }
+    } else {
+        // 冷却期间，执行协调的食物搜索（避免过度分散）
+        return makeCoordinatedFoodHunt();
+    }
+
+    return makeRandomDecision(); // Fallback
+}
+
+AIAction SimpleAIPlayer::makeCoordinatedFoodHunt() {
+    // 协调的食物搜索策略：分裂状态下避免球分散过度
+    if (!m_playerBall || m_splitBalls.isEmpty()) {
+        return makeRandomDecision();
+    }
+    
+    // 计算当前球群的质心
+    QPointF centroid(0, 0);
+    float totalScore = 0.0f;
+    int validBalls = 0;
+    
+    for (CloneBall* ball : m_splitBalls) {
+        if (ball && !ball->isRemoved()) {
+            QPointF pos = ball->pos();
+            float score = ball->score();
+            centroid += pos * score;
+            totalScore += score;
+            validBalls++;
+        }
+    }
+    
+    if (validBalls == 0) {
+        return makeRandomDecision();
+    }
+    centroid /= totalScore;
+    
+    // 搜索附近的食物，优先选择靠近质心的食物
+    auto nearbyFood = getNearbyFood(100.0f);
+    
+    FoodBall* bestFood = nullptr;
+    float bestScore = -1.0f;
+    
+    for (FoodBall* food : nearbyFood) {
+        if (!food || food->isRemoved()) continue;
+        
+        QPointF playerPos = m_playerBall->pos();
+        QPointF foodPos = food->pos();
+        
+        float distanceToPlayer = QLineF(playerPos, foodPos).length();
+        float distanceToCentroid = QLineF(centroid, foodPos).length();
+        
+        // 综合评分：距离当前球近 + 距离质心近 + 食物价值
+        float score = food->score() / (1.0f + distanceToPlayer * 0.1f + distanceToCentroid * 0.05f);
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestFood = food;
+        }
+    }
+    
+    if (bestFood) {
+        QPointF direction = bestFood->pos() - m_playerBall->pos();
+        float length = QLineF(QPointF(0,0), direction).length();
+        if (length > 0.1f) {
+            QPointF safeDirection = getSafeDirection(direction / length);
+            return AIAction(safeDirection.x(), safeDirection.y(), ActionType::MOVE);
+        }
+    }
+    
+    // 如果没有找到合适的食物，向质心缓慢移动
+    QPointF direction = centroid - m_playerBall->pos();
+    float length = QLineF(QPointF(0,0), direction).length();
+    if (length > 10.0f) { // 只有距离质心较远时才移动
+        direction = getSafeDirection(direction / length);
+        // 降低移动速度，避免过快聚拢
+        return AIAction(direction.x() * 0.5f, direction.y() * 0.5f, ActionType::MOVE);
+    }
+    
+    return makeRandomDecision();
+}
+
 AIAction SimpleAIPlayer::makeAggressiveDecision() {
+    // Target locking logic
+    if (m_currentTarget) {
+        if (m_currentTarget->isRemoved() || !m_playerBall->canEat(m_currentTarget)) {
+            m_currentTarget = nullptr;
+            m_targetLockFrames = 0;
+        } else {
+            m_targetLockFrames++;
+            if (m_targetLockFrames < 10) { // Lock target for 10 frames
+                QPointF direction = m_currentTarget->pos() - m_playerBall->pos();
+                float length = QLineF(QPointF(0,0), direction).length();
+                if (length > 0.1f) {
+                    QPointF safeDirection = getSafeDirection(direction / length);
+                    return AIAction(safeDirection.x(), safeDirection.y(), ActionType::MOVE);
+                }
+            } else {
+                m_currentTarget = nullptr; // Unlock after 10 frames
+                m_targetLockFrames = 0;
+            }
+        }
+    }
+
     // 🔥 改进的攻击策略：综合考虑距离、速度、分数等因素
     auto nearbyPlayers = getNearbyPlayers(200.0f); // 扩大搜索范围
     
@@ -487,22 +685,22 @@ AIAction SimpleAIPlayer::makeAggressiveDecision() {
         float attackScore = 0.0f;
         
         // 1. 分数优势（越大越好）
-        attackScore += std::min(scoreRatio - 1.3f, 2.0f) * 30.0f; // 至少要有1.3倍分数优势
-        
+        attackScore += std::min(scoreRatio - 1.1f, 2.0f) * 40.0f; // 至少要有1.1倍分数优势
+
         // 2. 距离因素（越近越好，但太近不好分裂）
-        float optimalDistance = m_playerBall->radius() * 3.0f; // 最佳攻击距离
+        float optimalDistance = m_playerBall->radius() * 2.5f; // 最佳攻击距离
         float distanceFactor = 1.0f - std::abs(distance - optimalDistance) / (optimalDistance * 2.0f);
-        attackScore += std::max(distanceFactor, 0.0f) * 25.0f;
-        
+        attackScore += std::max(distanceFactor, 0.0f) * 30.0f;
+
         // 3. 速度优势
-        attackScore += (speedAdvantage - 1.0f) * 15.0f;
-        
+        attackScore += (speedAdvantage - 1.0f) * 20.0f;
+
         // 4. 目标越小越容易攻击
-        attackScore += (2.0f - radiusRatio) * 10.0f;
-        
+        attackScore += (2.0f - radiusRatio) * 15.0f;
+
         // 5. 如果可以分裂攻击，额外加分
-        if (m_playerBall->canSplit() && distance < m_playerBall->radius() * 4.0f) {
-            attackScore += 20.0f;
+        if (m_playerBall->canSplit() && distance < m_playerBall->radius() * 3.5f) {
+            attackScore += 25.0f;
         }
         
         qDebug() << "Evaluating target:" << player->ballId() 
@@ -514,6 +712,7 @@ AIAction SimpleAIPlayer::makeAggressiveDecision() {
         if (attackScore > 50.0f && attackScore > bestScore) { // 最低攻击阈值
             bestScore = attackScore;
             bestTarget = player;
+            m_currentTarget = bestTarget;
         }
     }
     
@@ -929,32 +1128,185 @@ QPointF SimpleAIPlayer::getSafeDirection(const QPointF& targetDirection) const
     
     QPointF currentPos = m_playerBall->pos();
     
-    // 如果不在边界附近，直接返回目标方向
-    if (!isNearBorder(currentPos, 200.0f)) {
-        return targetDirection;
+    // 🔥 检测是否卡住（位置变化很小）
+    float distanceMoved = QLineF(currentPos, m_lastPosition).length();
+    if (distanceMoved < 2.0f) {
+        m_stuckFrameCount++;
+    } else {
+        m_stuckFrameCount = 0;
+        m_lastPosition = currentPos;
     }
     
-    // 获取避开边界的方向
-    QPointF avoidDirection = getAvoidBorderDirection(currentPos);
+    // 🔥 更新移动方向历史（用于检测振荡）
+    m_recentDirections.append(targetDirection);
+    if (m_recentDirections.size() > 10) {
+        m_recentDirections.removeFirst();
+    }
     
-    if (avoidDirection.manhattanLength() > 0.1f) {
-        // 混合目标方向和避障方向
-        QPointF safeDirection = targetDirection * 0.3f + avoidDirection * 0.7f;
+    // 🔥 检测振荡：如果最近的方向频繁反向，说明在打转
+    bool isOscillating = false;
+    if (m_recentDirections.size() >= 6) {
+        QPointF avgDirection(0, 0);
+        for (const QPointF& dir : m_recentDirections) {
+            avgDirection += dir;
+        }
+        avgDirection /= m_recentDirections.size();
         
-        // 归一化
-        float length = std::sqrt(safeDirection.x() * safeDirection.x() + safeDirection.y() * safeDirection.y());
+        float avgLength = QLineF(QPointF(0,0), avgDirection).length();
+        if (avgLength < 0.3f) { // 平均方向很小，说明在振荡
+            isOscillating = true;
+        }
+    }
+    
+    // 🔥 如果卡住或振荡，使用紧急脱困策略
+    if (m_stuckFrameCount > 5 || isOscillating) {
+        qDebug() << "AI Ball" << m_playerBall->ballId() << "is stuck or oscillating, using emergency escape";
+        
+        // 生成随机逃脱方向
+        float angle = QRandomGenerator::global()->generateDouble() * 2.0 * M_PI;
+        QPointF emergencyDirection(std::cos(angle), std::sin(angle));
+        
+        // 确保逃脱方向远离边界
+        QPointF avoidDirection = getAvoidBorderDirection(currentPos);
+        if (avoidDirection.manhattanLength() > 0.1f) {
+            emergencyDirection = avoidDirection + emergencyDirection * 0.3f;
+            float length = QLineF(QPointF(0,0), emergencyDirection).length();
+            if (length > 0.1f) {
+                emergencyDirection /= length;
+            }
+        }
+        
+        m_stuckFrameCount = 0; // 重置计数
+        m_recentDirections.clear(); // 清除历史
+        return emergencyDirection;
+    }
+    
+    // 🔥 边界检测和智能避障
+    if (!isNearBorder(currentPos, 100.0f)) {
+        return targetDirection; // 不在边界附近，直接返回
+    }
+    
+    // 在边界附近，进行智能避障
+    const Border& border = m_playerBall->border();
+    float margin = 80.0f + m_playerBall->radius();
+    
+    QPointF safeDirection = targetDirection;
+    bool needAvoidance = false;
+    
+    // 检查目标方向是否会导致撞墙
+    QPointF futurePos = currentPos + targetDirection * 50.0f; // 预测未来位置
+    
+    if (futurePos.x() - border.minx < margin) {
+        // 将要撞左墙，向右偏移
+        if (safeDirection.x() < 0) {
+            safeDirection.setX(std::abs(safeDirection.x()));
+            needAvoidance = true;
+        }
+    }
+    if (border.maxx - futurePos.x() < margin) {
+        // 将要撞右墙，向左偏移
+        if (safeDirection.x() > 0) {
+            safeDirection.setX(-std::abs(safeDirection.x()));
+            needAvoidance = true;
+        }
+    }
+    if (futurePos.y() - border.miny < margin) {
+        // 将要撞上墙，向下偏移
+        if (safeDirection.y() < 0) {
+            safeDirection.setY(std::abs(safeDirection.y()));
+            needAvoidance = true;
+        }
+    }
+    if (border.maxy - futurePos.y() < margin) {
+        // 将要撞下墙，向上偏移
+        if (safeDirection.y() > 0) {
+            safeDirection.setY(-std::abs(safeDirection.y()));
+            needAvoidance = true;
+        }
+    }
+    
+    if (needAvoidance) {
+        m_borderCollisionCount++;
+        
+        // 🔥 如果连续撞墙多次，使用沿边界移动策略
+        if (m_borderCollisionCount > 3) {
+            QPointF wallDirection = getWallTangentDirection(currentPos);
+            if (wallDirection.manhattanLength() > 0.1f) {
+                qDebug() << "AI Ball" << m_playerBall->ballId() << "using wall-following strategy";
+                m_borderCollisionCount = 0;
+                return wallDirection;
+            }
+        }
+        
+        // 归一化避障方向
+        float length = QLineF(QPointF(0,0), safeDirection).length();
         if (length > 0.1f) {
             safeDirection /= length;
         }
         
-        qDebug() << "AI player" << (m_playerBall ? m_playerBall->ballId() : -1) 
-                 << "avoiding border, original direction:" << targetDirection
-                 << "safe direction:" << safeDirection;
-        
-        return safeDirection;
+        qDebug() << "AI Ball" << m_playerBall->ballId() << "avoiding border, direction:" 
+                 << targetDirection << "-> safe:" << safeDirection;
+    } else {
+        m_borderCollisionCount = 0; // 重置撞墙计数
     }
     
-    return targetDirection;
+    return safeDirection;
+}
+
+QPointF SimpleAIPlayer::getWallTangentDirection(const QPointF& position) const
+{
+    if (!m_playerBall) return QPointF(0, 0);
+    
+    const Border& border = m_playerBall->border();
+    float margin = 60.0f + m_playerBall->radius();
+    
+    // 检测最近的墙壁并返回切线方向
+    bool nearLeft = (position.x() - border.minx < margin);
+    bool nearRight = (border.maxx - position.x() < margin);
+    bool nearTop = (position.y() - border.miny < margin);
+    bool nearBottom = (border.maxy - position.y() < margin);
+    
+    QPointF tangentDirection(0, 0);
+    
+    if (nearLeft || nearRight) {
+        // 靠近左右墙，沿垂直方向移动
+        if (position.y() < (border.miny + border.maxy) / 2) {
+            tangentDirection.setY(1.0f); // 向下
+        } else {
+            tangentDirection.setY(-1.0f); // 向上
+        }
+        
+        // 如果在角落，添加远离角落的分量
+        if (nearTop) {
+            tangentDirection.setY(1.0f); // 强制向下
+        } else if (nearBottom) {
+            tangentDirection.setY(-1.0f); // 强制向上
+        }
+    }
+    
+    if (nearTop || nearBottom) {
+        // 靠近上下墙，沿水平方向移动
+        if (position.x() < (border.minx + border.maxx) / 2) {
+            tangentDirection.setX(1.0f); // 向右
+        } else {
+            tangentDirection.setX(-1.0f); // 向左
+        }
+        
+        // 如果在角落，添加远离角落的分量
+        if (nearLeft) {
+            tangentDirection.setX(1.0f); // 强制向右
+        } else if (nearRight) {
+            tangentDirection.setX(-1.0f); // 强制向左
+        }
+    }
+    
+    // 归一化方向
+    float length = QLineF(QPointF(0,0), tangentDirection).length();
+    if (length > 0.1f) {
+        tangentDirection /= length;
+    }
+    
+    return tangentDirection;
 }
 
 } // namespace AI

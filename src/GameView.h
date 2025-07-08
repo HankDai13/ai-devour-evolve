@@ -67,8 +67,10 @@ private slots:
     void onPlayerAdded(CloneBall* player);
     void onPlayerRemoved(CloneBall* player);
     void onAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer); // 新增：处理AI玩家销毁
+    void onGameOver(int winningTeamId);
 
 private:
+    void showGameOverScreen(int winningTeamId);
     GameManager* m_gameManager;
     CloneBall* m_mainPlayer;
     

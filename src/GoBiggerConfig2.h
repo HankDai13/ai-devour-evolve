@@ -32,7 +32,6 @@ constexpr int MAX_SPLIT_COUNT = 10;                // 最大分裂数量（降�
 constexpr float SPLIT_BOOST_SPEED = 500.0f;        // 分裂冲刺速度 (文档标准)
 constexpr float SPLIT_COOLDOWN = 1.0f;             // 分裂冷却时间(秒)
 constexpr float MERGE_DELAY = 20.0f;               // 合并延迟时间(秒) (recombine_frame=400/20fps)
-constexpr float RECOMBINE_RADIUS = 1.1f;           // 合并半径倍数（稍微重叠就合并）
 
 // 吞噬参数 (参考GoBigger原版)
 constexpr float EAT_RATIO = 1.3f;                  // 吞噬分数比例 (GoBigger标准)
@@ -84,6 +83,7 @@ constexpr float DECAY_START_SCORE = 2600.0f;       // 开始衰减的分数 (GoB
 constexpr float DECAY_RATE = 0.00005f;             // 衰减速率 (GoBigger标准)
 
 // 合并参数
+constexpr float RECOMBINE_RADIUS = 1.1f;           // 合并半径倍数（稍微重叠就合并）
 constexpr int BIG_FOOD_SCORE = 500;                // 大食物分数
 constexpr float BIG_FOOD_RADIUS = 50.0f;           // 大食物半径
 constexpr float BIG_FOOD_SPAWN_RATE = 0.1f;        // 大食物生成概率

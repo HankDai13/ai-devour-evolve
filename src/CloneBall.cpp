@@ -1040,10 +1040,14 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
     
     // 原球也重置冷却计数器
     m_frameSinceLastSplit = 0;
-    
+
     qDebug() << "Thorns split completed: created" << newBalls.size() 
              << "new balls with score" << newBallScore 
              << "each, original ball score:" << m_score;
+
+    if (!newBalls.isEmpty()) {
+        emit splitPerformed(this, newBalls);
+    }
     
     return newBalls;
 }

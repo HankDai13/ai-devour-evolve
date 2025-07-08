@@ -129,6 +129,7 @@ signals:
     void playerRemoved(CloneBall* player);
     void ballAdded(BaseBall* ball);
     void ballRemoved(BaseBall* ball);
+    void gameOver(int winningTeamId);
 
 private slots:
     void updateGame();

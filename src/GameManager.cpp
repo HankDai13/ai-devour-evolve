@@ -438,6 +438,22 @@ void GameManager::updateGame()
         removeBall(ball);
         ball->deleteLater();
     }
+
+    // Check for game over
+    QSet<int> activeTeams;
+    for (CloneBall* player : m_players) {
+        if (player && !player->isRemoved()) {
+            activeTeams.insert(player->teamId());
+        }
+    }
+
+    if (activeTeams.size() <= 1) {
+        int winningTeamId = -1;
+        if (activeTeams.size() == 1) {
+            winningTeamId = *activeTeams.begin();
+        }
+        emit gameOver(winningTeamId);
+    }
 }
 
 void GameManager::spawnFood()
