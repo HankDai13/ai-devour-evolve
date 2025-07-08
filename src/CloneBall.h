@@ -45,6 +45,11 @@ public:
     
     // 玩家操作
     void setMoveDirection(const QVector2D& direction);
+    // AI控制接口
+    void setTargetDirection(const QPointF& direction);
+    QPointF getVelocity() const;
+    void split(); // 简化的分裂接口
+    void ejectSpore(const QPointF& direction); // 简化的孢子喷射接口
     void applyGoBiggerMovement(const QVector2D& playerInput, const QVector2D& centerForce); // 新增：GoBigger风格移动
     QVector<CloneBall*> performSplit(const QVector2D& direction);
     QVector<CloneBall*> performThornsSplit(const QVector2D& direction, int totalPlayerBalls); // 新增：吃荆棘球后的特殊分裂
@@ -63,11 +68,13 @@ public:
     void move(const QVector2D& direction, qreal duration) override;
     bool canEat(BaseBall* other) const override;
     void eat(BaseBall* other) override;
+    void remove() override;  // 🔥 重写remove函数以停止定时器
 
 signals:
     void splitPerformed(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
     void sporeEjected(CloneBall* ball, SporeBall* spore);
     void thornsEaten(CloneBall* ball, ThornsBall* thorns); // 新增：吃荆棘球信号
+    void mergePerformed(CloneBall* survivingBall, CloneBall* mergedBall); // 新增：合并信号
 
 protected:
     QColor getBallColor() const override;

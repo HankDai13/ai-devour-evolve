@@ -6,10 +6,13 @@
 #include <QTimer>
 #include <QSet>
 #include <QVector2D>
+#include <QMap>
 
 class GameManager;
 class CloneBall;
 class BaseBall;
+class AIDebugWidget;
+namespace GoBigger { namespace AI { class SimpleAIPlayer; } }
 
 // GameView继承自QGraphicsView，成为游戏视图
 class GameView : public QGraphicsView
@@ -29,6 +32,21 @@ public:
     // 玩家控制
     CloneBall* getMainPlayer() const { return m_mainPlayer; }
     float getTotalPlayerScore() const; // 获取玩家总分数（所有分身球的分数总和）
+    
+    // 游戏管理器访问
+    GameManager* getGameManager() const { return m_gameManager; }
+    
+    // AI玩家控制
+    void addAIPlayer();
+    void addRLAIPlayer();
+    void addAIPlayerWithDialog();  // 新增：通过对话框添加AI玩家
+    void startAllAI();
+    void stopAllAI();
+    void removeAllAI();
+    
+    // AI调试功能
+    void showAIDebugConsole();
+    void toggleAIDebugConsole();
 
 protected:
     // 事件处理
@@ -36,6 +54,7 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    void paintEvent(QPaintEvent *event) override; // 🔥 添加paintEvent以绘制UI层
     
     // 渲染优化
     void drawBackground(QPainter *painter, const QRectF &rect) override;
@@ -47,8 +66,11 @@ private slots:
     void onGameReset();
     void onPlayerAdded(CloneBall* player);
     void onPlayerRemoved(CloneBall* player);
+    void onAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer); // 新增：处理AI玩家销毁
+    void onGameOver(int winningTeamId);
 
 private:
+    void showGameOverScreen(int winningTeamId);
     GameManager* m_gameManager;
     CloneBall* m_mainPlayer;
     
@@ -66,6 +88,21 @@ private:
     qreal m_maxVisionRadius;
     qreal m_scaleUpRatio;
     
+    // 🔥 视角稳定性控制
+    qreal m_lastTargetZoom;           // 上次的目标缩放
+    QPointF m_lastCentroid;           // 上次的质心位置
+    qreal m_zoomDeadZone;             // 缩放死区阈值
+    qreal m_centroidDeadZone;         // 质心移动死区阈值
+    int m_stableFrameCount;           // 稳定帧计数
+    int m_requiredStableFrames;       // 需要的稳定帧数
+    bool m_isInitialStabilizing;      // 是否在初始稳定阶段
+    
+    // AI控制
+    QVector<GoBigger::AI::SimpleAIPlayer*> m_aiPlayers;
+    
+    // AI调试
+    AIDebugWidget* m_aiDebugWidget;
+
     // 初始化
     void initializeView();
     void initializePlayer();
@@ -95,6 +132,15 @@ private:
     // 玩家操作
     void handleSplitAction();
     void handleEjectAction();
+
+    // 队伍管理
+    int assignTeamForNewAI(); // 为新AI分配队伍
+    void updateTeamScores(); // 更新队伍分数
+    QColor getTeamColor(int teamId) const; // 新增：获取队伍颜色
+
+    // 队伍积分和排行榜
+    QMap<int, float> calculateTeamScores() const;
+    void drawTeamLeaderboard(QPainter* painter);
 };
 
 #endif // GAMEVIEW_H

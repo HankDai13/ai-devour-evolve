@@ -131,8 +131,22 @@ void BaseBall::remove()
 {
     if (!m_isRemoved) {
         m_isRemoved = true;
+        
+        // 🔥 停止所有移动和动画
+        setVelocity(QVector2D(0, 0));
+        
+        // 🔥 立即从场景中移除，防止"尸体"残留
+        if (scene()) {
+            scene()->removeItem(this);
+        }
+        
+        // 🔥 隐藏物体，确保不会被渲染
+        setVisible(false);
+        
+        // 🔥 发出信号让管理器清理引用
         emit ballRemoved(this);
-        qDebug() << "Ball" << m_ballId << "removed";
+        
+        qDebug() << "Ball" << m_ballId << "completely removed from scene and hidden";
     }
 }
 

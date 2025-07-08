@@ -76,12 +76,49 @@ void CloneBall::setMoveDirection(const QVector2D& direction)
     m_moveDirection = direction.normalized();
     updateDirection();
     
-    // 如果有分裂组，则统一控制整个组
-    propagateMovementToGroup(direction);
+    // 🔥 移除统一传播机制，让每个球独立控制
+    // propagateMovementToGroup(direction);
     
     // 立即应用移动
     if (direction.length() > 0.01) {
         move(direction, 0.016); // 以16ms为时间步长移动
+    }
+}
+
+// AI控制接口实现
+void CloneBall::setTargetDirection(const QPointF& direction)
+{
+    QVector2D vec2d(direction.x(), direction.y());
+    setMoveDirection(vec2d);
+}
+
+QPointF CloneBall::getVelocity() const
+{
+    return QPointF(m_velocity.x(), m_velocity.y());
+}
+
+void CloneBall::split()
+{
+    if (canSplit()) {
+        QVector2D splitDirection = m_moveDirection.length() > 0.01 ? m_moveDirection : QVector2D(1, 0);
+        auto newBalls = performSplit(splitDirection);
+        if (!newBalls.isEmpty()) {
+            emit splitPerformed(this, newBalls);
+        }
+    }
+}
+
+void CloneBall::ejectSpore(const QPointF& direction)
+{
+    if (canEject()) {
+        QVector2D ejectDir(direction.x(), direction.y());
+        if (ejectDir.length() < 0.01) {
+            ejectDir = m_moveDirection.length() > 0.01 ? m_moveDirection : QVector2D(1, 0);
+        }
+        SporeBall* spore = ejectSpore(ejectDir);
+        if (spore) {
+            emit sporeEjected(this, spore);
+        }
     }
 }
 
@@ -94,7 +131,11 @@ QVector<CloneBall*> CloneBall::performSplit(const QVector2D& direction)
     }
     
     // 计算分裂后的分数 - 使用GoBigger标准
+    float originalScore = m_score;
     float splitScore = m_score / 2.0f;
+    
+    qDebug() << "🔄 Split: Ball" << m_ballId << "Team" << m_teamId 
+             << "Original Score:" << originalScore << "-> Split Score:" << splitScore;
     
     // 计算分裂位置 - 参考GoBigger: position + direction * (radius * 2)
     QVector2D splitDir = direction.length() > 0.01 ? direction.normalized() : m_moveDirection.normalized();
@@ -158,11 +199,12 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
         return nullptr;
     }
     
-    // 确定孢子方向：如果没有指定方向，使用当前移动方向
+    // 确定孢子方向：使用传入的方向参数
     QVector2D sporeDirection;
     if (direction.length() > 0.01) {
         sporeDirection = direction.normalized();
     } else {
+        // 如果没有指定方向，使用当前移动方向作为备选
         sporeDirection = m_moveDirection.length() > 0.01 ? m_moveDirection.normalized() : QVector2D(1, 0);
     }
     
@@ -174,38 +216,26 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
     // 减少自己的分数
     setScore(m_score - scoreLoss);
     
-    // 计算孢子位置：在玩家球边缘外切，增加距离避免立即重叠
+    // 计算孢子位置：在玩家球边缘外切，避免立即重叠
     float sporeRadius = GoBiggerConfig::scoreToRadius(sporeScore);
-    float safeDistance = (radius() + sporeRadius) * 2.0f; // 增加到2倍安全距离
+    float safeDistance = (radius() + sporeRadius) * 1.5f; // 1.5倍安全距离
     
-    // 添加随机偏移，避免多个孢子重叠在完全相同的位置
-    static int sporeCounter = 0;
-    sporeCounter++;
-    float angleOffset = (sporeCounter % 8) * 45.0f; // 每个孢子偏移45度
-    QVector2D offsetDirection = sporeDirection;
-    if (sporeCounter > 1) {
-        // 计算偏移角度
-        float radians = qDegreesToRadians(angleOffset * 0.2f); // 增加偏移幅度
-        float cos_val = std::cos(radians);
-        float sin_val = std::sin(radians);
-        offsetDirection = QVector2D(
-            sporeDirection.x() * cos_val - sporeDirection.y() * sin_val,
-            sporeDirection.x() * sin_val + sporeDirection.y() * cos_val
-        );
-    }
+    // 🔥 修复：直接使用指定方向，不添加随机偏移
+    QPointF sporePos = pos() + QPointF(sporeDirection.x() * safeDistance, 
+                                       sporeDirection.y() * safeDistance);
     
-    QPointF sporePos = pos() + QPointF(offsetDirection.x() * safeDistance, 
-                                       offsetDirection.y() * safeDistance);
+    // 创建孢子球，使用时间戳确保唯一ID
+    static int sporeIdCounter = 0;
+    sporeIdCounter++;
+    int uniqueId = static_cast<int>(QDateTime::currentMSecsSinceEpoch() % 1000000) + sporeIdCounter;
     
-    // 创建孢子球，使用时间戳+计数器确保唯一ID
-    int uniqueId = static_cast<int>(QDateTime::currentMSecsSinceEpoch() % 1000000) + sporeCounter;
     SporeBall* spore = new SporeBall(
-        uniqueId, // 使用更好的唯一ID算法
+        uniqueId,
         sporePos,
         m_border,
         m_teamId,
         m_playerId,
-        sporeDirection,  // 孢子方向
+        sporeDirection,  // 🔥 直接使用计算好的方向，不做偏移
         velocity()       // 玩家球当前速度
     );
     
@@ -216,68 +246,65 @@ SporeBall* CloneBall::ejectSpore(const QVector2D& direction)
     
     emit sporeEjected(this, spore);
     
+    qDebug() << "CloneBall" << ballId() << "ejected spore in direction:" 
+             << sporeDirection.x() << sporeDirection.y() 
+             << "at position:" << sporePos.x() << sporePos.y();
+    
     return spore;
 }
 
 void CloneBall::move(const QVector2D& direction, qreal duration)
 {
+    // 🔥 修复：让配置参数真正生效的GoBigger逻辑
+    
     if (direction.length() > 0.01) {
-        // 使用GoBigger风格的动态速度计算
-        float currentRadius = radius();
-        float inputRatio = direction.length(); // 输入强度比例
+        // 标准化输入方向
+        QVector2D normalizedDir = direction.normalized();
+        float inputRatio = std::min(direction.length(), 1.0f);
         
-        // 计算动态最大速度和加速度
-        qreal maxSpeed = GoBiggerConfig::calculateDynamicSpeed(currentRadius, inputRatio);
-        qreal dynAccel = GoBiggerConfig::calculateDynamicAcceleration(currentRadius, inputRatio);
+        // 使用配置的加速度参数
+        float accelWeight = GoBiggerConfig::BASE_SPEED * 0.5f; // 让BASE_SPEED影响加速度
+        QVector2D targetAccel = normalizedDir * (accelWeight * inputRatio);
+        setAcceleration(targetAccel);
         
-        // 更直接的速度控制，减少延迟感
-        QVector2D targetVelocity = direction.normalized() * maxSpeed;
-        
-        // 动态加速度控制
-        QVector2D accel = (targetVelocity - velocity()) * dynAccel;
-        setAcceleration(accel);
-        
-        // 立即更新速度，但使用插值让变化更平滑
+        // 更新速度：vel_given = vel_given + acc * duration
         QVector2D currentVel = velocity();
-        QVector2D newVel = currentVel + accel * duration;
+        QVector2D newVel = currentVel + targetAccel * duration;
         
-        // 限制最大速度
+        // 🔥 让BASE_SPEED真正影响最大速度
+        float currentRadius = radius();
+        float baseMaxSpeed = (2.35f + 5.66f / currentRadius) * inputRatio;
+        float maxSpeed = baseMaxSpeed * (GoBiggerConfig::BASE_SPEED / 400.0f); // 以400为基准缩放
+        
+        // format_vector: 限制速度不超过最大值
         if (newVel.length() > maxSpeed) {
             newVel = newVel.normalized() * maxSpeed;
         }
         
-        // 使用更平滑的插值让速度变化更自然
-        QVector2D velocityDiff = newVel - currentVel;
-        
-        // 基于半径动态调整速度变化限制
-        float maxChange = maxSpeed * (0.1f + 0.2f / currentRadius); // 小球变化更快
-        if (velocityDiff.length() > maxChange) {
-            velocityDiff = velocityDiff.normalized() * maxChange;
-        }
-        
-        setVelocity(currentVel + velocityDiff);
+        setVelocity(newVel);
     } else {
-        // 如果没有输入方向，应用更平滑的阻力
+        // 没有输入时保持当前速度，添加少量阻力
         QVector2D currentVel = velocity();
-        if (currentVel.length() > 0.1) {
-            // 大球减速更慢，小球减速更快
-            float dampingFactor = 0.88f + 0.08f / radius();
-            setVelocity(currentVel * dampingFactor);
-        } else {
-            setVelocity(QVector2D(0, 0)); // 完全停止
-        }
+        setVelocity(currentVel * 0.98f);
+        setAcceleration(QVector2D(0, 0));
     }
     
-    // 应用分裂速度
+    // 🔥 GoBigger风格分裂速度处理
     if (m_splitVelocity.length() > 0.1) {
+        // 分裂速度和移动速度相加
         QVector2D totalVel = velocity() + m_splitVelocity;
         setVelocity(totalVel);
         
-        // 衰减分裂速度
+        // 分裂速度衰减：按帧数逐渐减少
         m_splitVelocity -= m_splitVelocityPiece;
+        
+        // 衰减完成后清零
         if (m_splitVelocity.length() < 0.1) {
             m_splitVelocity = QVector2D(0, 0);
         }
+        
+        // 更新分裂帧计数
+        m_splitFrame++;
     }
     
     // 调用基类物理更新
@@ -358,6 +385,17 @@ void CloneBall::updatePhysics(qreal deltaTime)
 
 void CloneBall::updateMovement()
 {
+    // 🔥 如果球已被移除，立即停止所有移动和更新
+    if (isRemoved()) {
+        if (m_movementTimer) {
+            m_movementTimer->stop();
+        }
+        if (m_decayTimer) {
+            m_decayTimer->stop();
+        }
+        return;
+    }
+    
     const qreal deltaTime = 0.016; // 16ms ≈ 60 FPS
     
     // 如果有移动方向，持续应用移动
@@ -381,6 +419,14 @@ void CloneBall::updateMovement()
 
 void CloneBall::updateScoreDecay()
 {
+    // 🔥 如果球已被移除，停止分数衰减
+    if (isRemoved()) {
+        if (m_decayTimer) {
+            m_decayTimer->stop();
+        }
+        return;
+    }
+    
     applyScoreDecay();
 }
 
@@ -524,11 +570,26 @@ void CloneBall::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
     painter->drawEllipse(QRectF(-radius() * 0.3, -radius() * 0.3, 
                                 radius() * 0.6, radius() * 0.6));
     
-    // 绘制团队标识（小圆点）
-    QColor teamDot = ballColor.darker(50);
-    painter->setBrush(QBrush(teamDot));
-    painter->drawEllipse(QRectF(-radius() * 0.1, -radius() * 0.1, 
-                                radius() * 0.2, radius() * 0.2));
+    // 🔥 绘制队伍字母标识（在球中心）
+    QChar teamLetter = GoBiggerConfig::getTeamLetter(m_teamId);
+    QFont font("Arial", static_cast<int>(radius() * 0.6)); // 字体大小基于球半径
+    font.setBold(true);
+    
+    painter->setFont(font);
+    painter->setPen(QPen(Qt::white, 2)); // 白色字体，2像素描边
+    
+    // 计算文字位置（居中）
+    QFontMetrics fm(font);
+    QRect textRect = fm.boundingRect(teamLetter);
+    QPointF textPos(-textRect.width() / 2.0, textRect.height() / 2.0 - 2);
+    
+    // 先绘制黑色描边
+    painter->setPen(QPen(Qt::black, 3));
+    painter->drawText(textPos, teamLetter);
+    
+    // 再绘制白色字母
+    painter->setPen(QPen(Qt::white, 1));
+    painter->drawText(textPos, teamLetter);
                                 
     // 绘制移动方向箭头（基于GoBigger的to_arrow实现）
     if (m_moveDirection.length() > 0.01) {
@@ -604,6 +665,11 @@ void CloneBall::mergeWith(CloneBall* other)
         return;
     }
     
+    qDebug() << "🔗 Ball" << m_ballId << "merging with ball" << other->ballId();
+    
+    // 🔥 在合并前发出信号通知AI
+    emit mergePerformed(this, other);
+    
     // 合并分数
     float combinedScore = m_score + other->score();
     setScore(combinedScore);
@@ -615,13 +681,23 @@ void CloneBall::mergeWith(CloneBall* other)
     // 重置分裂计时器
     m_frameSinceLastSplit = 0;
     
-    // 移除被合并的球
+    // 🔥 彻底移除被合并的球 - 多重保险
     other->remove();
+    
+    // 🔥 强制断开所有连接，避免悬空指针
+    other->setVelocity(QVector2D(0, 0)); // 停止移动
+    other->setVisible(false); // 隐藏
     
     // 从分裂关系中移除
     m_splitChildren.removeOne(other);
     if (other->getSplitParent() == this) {
         other->setSplitParent(nullptr);
+    }
+    
+    // 🔥 如果还在场景中，强制移除
+    if (other->scene() && other->scene()->items().contains(other)) {
+        other->scene()->removeItem(other);
+        qDebug() << "Force removed ball" << other->ballId() << "from scene";
     }
     
     qDebug() << "Ball" << m_ballId << "merged with ball" << other->ballId() 
@@ -790,32 +866,45 @@ void CloneBall::applyCenteringForce()
         return;
     }
     
-    // 计算中心位置（所有分裂球的质心）
+    // 计算质心位置（加权平均，大球权重更大）
     QPointF centerPos(0, 0);
-    float totalScore = 0;
+    float totalWeight = 0;
     
     for (CloneBall* ball : targetBalls) {
-        centerPos += ball->pos() * ball->score();
-        totalScore += ball->score();
+        float weight = ball->score(); // 使用分数作为权重
+        centerPos += ball->pos() * weight;
+        totalWeight += weight;
     }
     centerPos += pos() * m_score;
-    totalScore += m_score;
+    totalWeight += m_score;
     
-    centerPos /= totalScore;
+    centerPos /= totalWeight;
     
-    // 计算向心力
-    QPointF direction = centerPos - pos();
-    qreal distance = std::sqrt(direction.x() * direction.x() + direction.y() * direction.y());
+    // 计算到质心的距离向量
+    QVector2D toCenter = QVector2D(centerPos - pos());
+    float distance = toCenter.length();
     
-    if (distance > radius() * 0.5) { // 只有距离中心超过半个半径才应用向心力
-        // 温和的向心力，基于距离
-        qreal forceStrength = std::min(0.5, distance / (radius() * 20)); // 更温和的力度
-        QVector2D centeringForce(direction.x() / distance * forceStrength, 
-                                direction.y() / distance * forceStrength);
+    // 只有当距离超过最小阈值时才应用向心力
+    float minDistance = radius() * 1.5f; // 球半径的1.5倍
+    if (distance > minDistance) {
+        // GoBigger风格的非线性向心力计算
+        // 力度随距离非线性增加，但有最大限制
+        float normalizedDistance = std::min(1.0f, (distance - minDistance) / (radius() * 10.0f));
         
-        // 将向心力添加到当前速度（很小的增量）
-        QVector2D currentVel = velocity();
-        setVelocity(currentVel + centeringForce * 0.1); // 进一步减小影响
+        // 使用平滑的非线性函数 (类似easing function)
+        float easeInOut = normalizedDistance * normalizedDistance * (3.0f - 2.0f * normalizedDistance);
+        
+        // 计算力度，随时间衰减（合并时间越近，向心力越强）
+        float timeDecay = 1.0f - (float)m_frameSinceLastSplit / mergeDelayFrames;
+        float maxForce = 0.8f * timeDecay; // 最大向心力随时间递减
+        
+        float forceStrength = maxForce * easeInOut;
+        
+        // 计算向心力向量
+        QVector2D centeringForce = toCenter.normalized() * forceStrength;
+        
+        // 使用GoBigger的标准加速度系统应用向心力
+        applyGoBiggerMovement(QVector2D(0, 0), centeringForce);
     }
 }
 
@@ -833,12 +922,21 @@ void CloneBall::applyGoBiggerMovement(const QVector2D& playerInput, const QVecto
         givenAcc = normalizedInput * 30.0f; // GoBigger标准acc_weight=30
     }
     
-    // 2. 处理向心力加速度 (given_acc_center) - 减弱向心力，避免卡顿
+    // 2. 处理向心力加速度 (given_acc_center) - 优化为更平滑的力
     QVector2D centerAcc(0, 0);
     if (centerForce.length() > 0.01) {
         QVector2D normalizedCenter = centerForce.length() > 1.0f ? centerForce.normalized() : centerForce;
-        // 参考原版：given_acc_center = given_acc_center / self.radius
-        centerAcc = normalizedCenter / currentRadius * 5.0f; // 减小center_acc_weight从15到5
+        
+        // 使用GoBigger原版的向心力公式，但优化参数避免抖动
+        // 原版: given_acc_center = given_acc_center / self.radius
+        float centerWeight = 8.0f / std::max(currentRadius, 10.0f); // 半径越大，向心力越小
+        centerAcc = normalizedCenter * centerWeight;
+        
+        // 添加速度衰减，避免振荡
+        float currentSpeed = velocity().length();
+        if (currentSpeed > 50.0f) { // 如果速度过快，减弱向心力
+            centerAcc *= (50.0f / currentSpeed);
+        }
     }
     
     // 3. 计算总加速度
@@ -900,23 +998,18 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
     // 3. 确定分裂方向
     QVector2D splitDir = direction.length() > 0.01 ? direction.normalized() : QVector2D(1, 0);
     
-    // 4. 创建新球，第一个在指定方向，其他均匀分布
+    // 4. 创建新球，按照GoBigger原版：均匀分布在圆周上
     for (int i = 0; i < actualNewBalls; ++i) {
-        // 计算位置：第一个球在分裂方向上，其他球均匀分布在圆周上
-        float angle;
-        if (i == 0) {
-            // 第一个新球总是在分裂方向上
-            angle = std::atan2(splitDir.y(), splitDir.x());
-        } else {
-            // 其他球均匀分布，避开第一个球的位置
-            angle = (2.0f * M_PI * (i - 1)) / (actualNewBalls - 1);
-            if (actualNewBalls == 1) {
-                angle = std::atan2(splitDir.y(), splitDir.x());
-            }
-        }
+        // 🔥 GoBigger原版荆棘分裂：均匀分布在圆周上
+        float angle = 2.0f * M_PI * (i + 1) / actualNewBalls; // 从i+1开始避免重叠
         
-        float distance = radius() * 3.5f; // 增加分散距离，避免重叠
-        QVector2D offset(std::cos(angle) * distance, std::sin(angle) * distance);
+        // 计算新球半径用于分离距离
+        float newBallRadius = GoBiggerConfig::scoreToRadius(newBallScore);
+        
+        // GoBigger风格：新球位置 = 原球位置 + (原球半径 + 新球半径) * 方向
+        float separationDistance = radius() + newBallRadius;
+        QVector2D offset(std::cos(angle) * separationDistance, 
+                        std::sin(angle) * separationDistance);
         QPointF newPos = pos() + QPointF(offset.x(), offset.y());
         
         // 创建新球
@@ -937,19 +1030,59 @@ QVector<CloneBall*> CloneBall::performThornsSplit(const QVector2D& direction, in
         newBall->setSplitParent(this);  // 设置父球关系
         m_splitChildren.append(newBall); // 添加到子球列表
         
-        // GoBigger风格速度继承：新球继承原球的移动速度，保持统一
+        // 🔥 GoBigger原版荆棘分裂速度：弹出动画 + 原速度继承
+        QVector2D splitDirection(std::cos(angle), std::sin(angle));
+        
+        // 计算荆棘分裂的弹出速度 (基于GoBigger原版公式)
+        float splitSpeed = GoBiggerConfig::calcSplitVelInitFromThorns(newBall->radius());
+        QVector2D splitVelocity = splitDirection * splitSpeed;
+        
+        // 新球速度 = 原球移动速度 + 弹出速度
         QVector2D originalVelocity = velocity();
-        newBall->setVelocity(originalVelocity);
+        newBall->setVelocity(originalVelocity + splitVelocity);
+        
+        // 应用分裂速度系统 (会逐渐衰减到原球速度)
+        newBall->applySplitVelocityEnhanced(splitDirection, splitSpeed, true);
         
         newBalls.append(newBall);
     }
     
     // 原球也重置冷却计数器
     m_frameSinceLastSplit = 0;
-    
+
     qDebug() << "Thorns split completed: created" << newBalls.size() 
              << "new balls with score" << newBallScore 
              << "each, original ball score:" << m_score;
+
+    if (!newBalls.isEmpty()) {
+        emit splitPerformed(this, newBalls);
+    }
     
     return newBalls;
+}
+
+void CloneBall::remove()
+{
+    // 🔥 立即停止所有定时器，防止"尸体漂移"
+    if (m_movementTimer) {
+        m_movementTimer->stop();
+    }
+    if (m_decayTimer) {
+        m_decayTimer->stop();
+    }
+    
+    // 清除移动方向，确保球完全停止
+    m_moveDirection = QVector2D(0, 0);
+    m_velocity = QVector2D(0, 0);
+    
+    // 🔥 立即从场景中移除，防止"尸体"残留
+    if (scene()) {
+        scene()->removeItem(this);
+        qDebug() << "CloneBall" << ballId() << "removed from scene";
+    }
+    
+    // 调用基类的remove函数
+    BaseBall::remove();
+    
+    qDebug() << "CloneBall" << ballId() << "removed and all timers stopped";
 }
