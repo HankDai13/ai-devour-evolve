@@ -661,6 +661,11 @@ void CloneBall::mergeWith(CloneBall* other)
         return;
     }
     
+    qDebug() << "🔗 Ball" << m_ballId << "merging with ball" << other->ballId();
+    
+    // 🔥 在合并前发出信号通知AI
+    emit mergePerformed(this, other);
+    
     // 合并分数
     float combinedScore = m_score + other->score();
     setScore(combinedScore);

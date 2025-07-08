@@ -9,7 +9,7 @@ echo ====================================
 echo   AI Devour Evolve Game Launcher
 echo ====================================
 echo.
-echo 设置Qt环境变量...
+echo Setting Qt ENVIRONMENT...
 echo QT_QPA_PLATFORM_PLUGIN_PATH=%QT_QPA_PLATFORM_PLUGIN_PATH%
 echo.
 
@@ -22,8 +22,8 @@ if not exist ".\build\Release\ai-devour-evolve.exe" (
     exit /b 1
 )
 
-:: 启动游戏
-echo 正在启动游戏...
+:: Start Game
+echo Starting Game...
 echo.
 .\build\Release\ai-devour-evolve.exe
 
@@ -35,7 +35,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
-echo 游戏已退出。
+echo Game Exit.
 pause
 
 endlocal

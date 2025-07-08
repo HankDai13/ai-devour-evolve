@@ -103,6 +103,7 @@ private slots:
     void onPlayerBallRemoved();  // 新增：处理球被移除
     void onSplitPerformed(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
     void onBallDestroyed(QObject* ball);
+    void onMergePerformed(CloneBall* survivingBall, CloneBall* mergedBall); // 新增：处理合并信号
 
 private:
     CloneBall* m_playerBall;
@@ -137,6 +138,12 @@ private:
     mutable CloneBall* m_huntTarget; // 锁定追杀的目标
     mutable int m_huntModeFrames; // 追杀模式持续帧数
     mutable QPointF m_lastHuntTargetPos; // 上次追杀目标位置
+    
+    // 🔥 新增：分裂球合并管理
+    mutable bool m_shouldMerge; // 是否应该主动合并
+    mutable int m_splitFrameCount; // 分裂后的帧计数
+    mutable QPointF m_mergeTargetPos; // 合并目标位置
+    mutable CloneBall* m_preferredMergeTarget; // 优先合并的目标球
     
     // 不同策略的实现
     AIAction makeRandomDecision();
@@ -195,13 +202,20 @@ private:
     // 获取附近的球体信息
     std::vector<BaseBall*> getNearbyBalls(float radius = 100.0f);
     std::vector<FoodBall*> getNearbyFood(float radius = 150.0f) const;
-    std::vector<CloneBall*> getNearbyPlayers(float radius = 120.0f);
+    std::vector<CloneBall*> getNearbyPlayers(float radius = 120.0f) const;
 
     // 边界和避障相关
     bool isNearBorder(const QPointF& position, float threshold = 150.0f) const;
     QPointF getAvoidBorderDirection(const QPointF& position) const;
     QPointF getSafeDirection(const QPointF& targetDirection) const;
     QPointF getWallTangentDirection(const QPointF& position) const; // 🔥 新增：沿墙移动方向
+    
+    // 🔥 新增：分裂球合并管理
+    std::vector<CloneBall*> getAllMyBalls() const; // 获取所有同队同玩家的球
+    bool shouldAttemptMerge() const; // 判断是否应该尝试合并
+    CloneBall* findBestMergeTarget() const; // 找到最佳合并目标
+    AIAction makeMergeDecision(); // 制定合并策略
+    void updateMergeStatus(); // 更新合并状态
 };
 
 } // namespace AI

@@ -124,15 +124,17 @@ void GameView::initializeView()
 
 void GameView::initializePlayer()
 {
+    qDebug() << "🎮 initializePlayer called";
+    
     // 检查GameManager是否已创建
     if (!m_gameManager) {
-        qDebug() << "GameManager not created yet, cannot initialize player!";
+        qDebug() << "🎮 GameManager not created yet, cannot initialize player!";
         return;
     }
     
     // 🔥 修复：更严格的重复创建检查
     if (m_mainPlayer && !m_mainPlayer->isRemoved()) {
-        qDebug() << "Main player already exists, skipping initialization";
+        qDebug() << "🎮 Main player already exists, skipping initialization. BallId:" << m_mainPlayer->ballId();
         return;
     }
     

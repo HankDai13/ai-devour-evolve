@@ -74,6 +74,7 @@ signals:
     void splitPerformed(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
     void sporeEjected(CloneBall* ball, SporeBall* spore);
     void thornsEaten(CloneBall* ball, ThornsBall* thorns); // 新增：吃荆棘球信号
+    void mergePerformed(CloneBall* survivingBall, CloneBall* mergedBall); // 新增：合并信号
 
 protected:
     QColor getBallColor() const override;

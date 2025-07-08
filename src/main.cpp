@@ -424,21 +424,20 @@ private:
         GameManager* gameManager = m_gameView->getGameManager();
         qDebug() << "Setting up debug mode with test AI";
         
-        // 调试模式：添加少量不同策略的AI作为测试对象
-        // 队伍1：食物猎手AI
-        gameManager->addAIPlayerWithStrategy(1, 0, GoBigger::AI::AIStrategy::FOOD_HUNTER);
-        gameManager->addAIPlayerWithStrategy(1, 1, GoBigger::AI::AIStrategy::FOOD_HUNTER);
+        // 🔥 修复：调试模式：确保AI使用不同的队伍ID，避免与人类玩家(队伍0)冲突
+        // 队伍2：食物猎手AI (不使用队伍0和1，避免冲突)
+        gameManager->addAIPlayerWithStrategy(2, 0, GoBigger::AI::AIStrategy::FOOD_HUNTER);
         
-        // 队伍2：攻击性AI
-        gameManager->addAIPlayerWithStrategy(2, 0, GoBigger::AI::AIStrategy::AGGRESSIVE);
+        // 队伍3：攻击性AI
+        gameManager->addAIPlayerWithStrategy(3, 0, GoBigger::AI::AIStrategy::AGGRESSIVE);
         
-        // 队伍3：随机AI
-        gameManager->addAIPlayerWithStrategy(3, 0, GoBigger::AI::AIStrategy::RANDOM);
+        // 队伍4：随机AI
+        gameManager->addAIPlayerWithStrategy(4, 0, GoBigger::AI::AIStrategy::RANDOM);
         
         // 如果有模型可用，添加一个模型AI
-        gameManager->addAIPlayerWithStrategy(4, 0, GoBigger::AI::AIStrategy::MODEL_BASED);
+        gameManager->addAIPlayerWithStrategy(5, 0, GoBigger::AI::AIStrategy::MODEL_BASED);
         
-        qDebug() << "Added test AI players for debug mode";
+        qDebug() << "Added test AI players for debug mode (teams 2-5)";
         
         // 稍后启动AI
         QTimer::singleShot(1000, gameManager, &GameManager::startAllAI);

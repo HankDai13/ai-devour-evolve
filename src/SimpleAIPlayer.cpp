@@ -36,6 +36,10 @@ SimpleAIPlayer::SimpleAIPlayer(CloneBall* playerBall, QObject* parent)
     , m_huntTarget(nullptr) // 🔥 初始化追杀模式变量
     , m_huntModeFrames(0)
     , m_lastHuntTargetPos(0, 0)
+    , m_shouldMerge(false) // 🔥 初始化合并相关变量
+    , m_splitFrameCount(0)
+    , m_mergeTargetPos(0, 0)
+    , m_preferredMergeTarget(nullptr)
 {
     qDebug() << "🔧 SimpleAIPlayer constructor started";
     
@@ -78,6 +82,8 @@ void SimpleAIPlayer::initializeWithPlayerBall(CloneBall* playerBall) {
     connect(m_playerBall, &BaseBall::ballRemoved, this, &SimpleAIPlayer::onPlayerBallRemoved);
     // 监听分裂信号
     connect(m_playerBall, &CloneBall::splitPerformed, this, &SimpleAIPlayer::onSplitPerformed);
+    // 🔥 监听合并信号
+    connect(m_playerBall, &CloneBall::mergePerformed, this, &SimpleAIPlayer::onMergePerformed);
     
     // 初始化分裂球列表
     m_splitBalls.clear();
@@ -162,6 +168,21 @@ void SimpleAIPlayer::makeDecision() {
         return;
     }
     
+    // 🔥 调试：打印当前AI控制的球数量和状态
+    QStringList ballIds;
+    for (CloneBall* ball : m_splitBalls) {
+        if (ball && !ball->isRemoved()) {
+            ballIds << QString::number(ball->ballId());
+        }
+    }
+    if (ballIds.size() != m_splitBalls.size()) {
+        qWarning() << "🚨 Mismatch in ball count! Valid:" << ballIds.size() << "Total:" << m_splitBalls.size();
+    }
+    qDebug() << "🎯 AI Decision: Controlling" << ballIds.size() << "balls:" << ballIds.join(",");
+    
+    // 🔥 新增：更新合并状态和计数器
+    updateMergeStatus();
+    
     try {
         // 🔥 修复：为每个分裂球独立决策，而不是统一行动
         for (CloneBall* ball : m_splitBalls) {
@@ -172,6 +193,17 @@ void SimpleAIPlayer::makeDecision() {
             m_playerBall = ball;
             
             AIAction action;
+            
+            // 🔥 优先检查合并逻辑（每个球独立）
+            if (shouldAttemptMerge()) {
+                AIAction mergeAction = makeMergeDecision();
+                if (mergeAction.dx != 0.0f || mergeAction.dy != 0.0f) {
+                    // 执行合并动作
+                    executeActionForBall(ball, mergeAction);
+                    m_playerBall = originalPlayerBall; // 恢复主球
+                    continue; // 跳过其他决策，专注合并
+                }
+            }
             
             // 🔥 分裂球协调逻辑：只有在严重分散时才强制聚拢
             if (m_splitBalls.size() > 1) {
@@ -216,6 +248,8 @@ void SimpleAIPlayer::makeDecision() {
             }
             
             // 🔥 为每个球独立执行策略决策
+            qDebug() << "🎯 Making decision for ball" << ball->ballId() << "strategy:" << static_cast<int>(m_strategy);
+            
             switch (m_strategy) {
                 case AIStrategy::RANDOM:
                     action = makeRandomDecision();
@@ -237,6 +271,7 @@ void SimpleAIPlayer::makeDecision() {
             }
             
             // 执行动作
+            qDebug() << "🎯 Executing action for ball" << ball->ballId() << "dx:" << action.dx << "dy:" << action.dy << "type:" << static_cast<int>(action.type);
             executeActionForBall(ball, action);
             
             // 恢复原始主球
@@ -1092,7 +1127,13 @@ void SimpleAIPlayer::executeAction(const AIAction& action) {
 }
 
 void SimpleAIPlayer::executeActionForBall(CloneBall* ball, const AIAction& action) {
-    if (!ball || ball->isRemoved()) return;
+    if (!ball || ball->isRemoved()) {
+        qWarning() << "🚨 executeActionForBall: Ball is null or removed!";
+        return;
+    }
+    
+    qDebug() << "🎮 Executing action for ball" << ball->ballId() 
+             << "dx:" << action.dx << "dy:" << action.dy << "type:" << static_cast<int>(action.type);
     
     // 🔥 为每个球单独进行边界检测
     CloneBall* originalPlayerBall = m_playerBall;
@@ -1178,7 +1219,7 @@ std::vector<FoodBall*> SimpleAIPlayer::getNearbyFood(float radius) const {
     return nearbyFood;
 }
 
-std::vector<CloneBall*> SimpleAIPlayer::getNearbyPlayers(float radius) {
+std::vector<CloneBall*> SimpleAIPlayer::getNearbyPlayers(float radius) const {
     std::vector<CloneBall*> nearbyPlayers;
     
     if (!m_playerBall || !m_playerBall->scene()) {
@@ -1351,7 +1392,7 @@ std::vector<float> SimpleAIPlayer::extractObservation() {
 }
 
 void SimpleAIPlayer::onSplitPerformed(CloneBall* originalBall, const QVector<CloneBall*>& newBalls) {
-    qDebug() << "Split performed! Original ball count:" << m_splitBalls.size() 
+    qDebug() << "🔄 Split performed! Original ball count:" << m_splitBalls.size() 
              << "New balls:" << newBalls.size();
     
     // 移除原始球（如果存在）
@@ -1361,12 +1402,30 @@ void SimpleAIPlayer::onSplitPerformed(CloneBall* originalBall, const QVector<Clo
     for (CloneBall* ball : newBalls) {
         if (ball && !m_splitBalls.contains(ball)) {
             m_splitBalls.append(ball);
-            // 监听新球的销毁信号
+            
+            // 🔥 重要：为每个新球连接所有必要的信号
             connect(ball, &QObject::destroyed, this, &SimpleAIPlayer::onBallDestroyed);
+            connect(ball, &CloneBall::splitPerformed, this, &SimpleAIPlayer::onSplitPerformed);
+            connect(ball, &CloneBall::mergePerformed, this, &SimpleAIPlayer::onMergePerformed); // 🔥 新增：连接合并信号
+            
+            qDebug() << "🔄 Added ball" << ball->ballId() << "to AI control";
         }
     }
     
-    qDebug() << "Now controlling" << m_splitBalls.size() << "balls";
+    // 🔥 确保我们有主球
+    if (m_splitBalls.isEmpty()) {
+        qWarning() << "🚨 No balls remaining after split!";
+        stopAI();
+        return;
+    }
+    
+    // 🔥 如果主球不在列表中，选择第一个球作为主球
+    if (!m_splitBalls.contains(m_playerBall)) {
+        m_playerBall = m_splitBalls.first();
+        qDebug() << "🔄 Updated main ball to:" << m_playerBall->ballId();
+    }
+    
+    qDebug() << "🔄 Now controlling" << m_splitBalls.size() << "balls";
 }
 
 void SimpleAIPlayer::onBallDestroyed(QObject* ball) {
@@ -1692,6 +1751,229 @@ QPointF SimpleAIPlayer::getWallTangentDirection(const QPointF& position) const
     }
     
     return tangentDirection;
+}
+
+// 🔥 ============ 分裂球合并管理实现 ============
+
+std::vector<CloneBall*> SimpleAIPlayer::getAllMyBalls() const {
+    std::vector<CloneBall*> myBalls;
+    
+    // 🔥 优先使用m_splitBalls列表，这是AI实际控制的球
+    for (CloneBall* ball : m_splitBalls) {
+        if (ball && !ball->isRemoved()) {
+            myBalls.push_back(ball);
+        }
+    }
+    
+    // 🔥 如果splitBalls为空，回退到场景搜索
+    if (myBalls.empty() && m_playerBall && m_playerBall->scene()) {
+        auto items = m_playerBall->scene()->items();
+        for (auto item : items) {
+            CloneBall* ball = dynamic_cast<CloneBall*>(item);
+            if (ball && !ball->isRemoved() && 
+                ball->teamId() == m_playerBall->teamId() && 
+                ball->playerId() == m_playerBall->playerId()) {
+                myBalls.push_back(ball);
+            }
+        }
+    }
+    
+    return myBalls;
+}
+
+bool SimpleAIPlayer::shouldAttemptMerge() const {
+    auto myBalls = getAllMyBalls();
+    
+    // 只有多于一个球时才考虑合并
+    if (myBalls.size() <= 1) {
+        m_shouldMerge = false;
+        return false;
+    }
+    
+    // 检查是否有球可以合并
+    bool hasValidMergeTarget = false;
+    for (auto ball1 : myBalls) {
+        for (auto ball2 : myBalls) {
+            if (ball1 != ball2 && ball1->canMergeWith(ball2)) {
+                hasValidMergeTarget = true;
+                break;
+            }
+        }
+        if (hasValidMergeTarget) break;
+    }
+    
+    if (!hasValidMergeTarget) {
+        return false;
+    }
+    
+    // 🔥 合并触发条件
+    bool shouldMerge = false;
+    
+    // 1. 追杀任务完成：没有追杀目标或追杀目标已消失
+    if (!m_huntTarget || m_huntTarget->isRemoved()) {
+        shouldMerge = true;
+        qDebug() << "🔗 Should merge: Hunt target completed/lost";
+    }
+    
+    // 2. 分裂时间过长：超过15秒
+    if (m_splitFrameCount > 15 * 60) { // 15秒 * 60帧
+        shouldMerge = true;
+        qDebug() << "🔗 Should merge: Split too long (" << m_splitFrameCount/60 << "s)";
+    }
+    
+    // 3. 安全环境：附近没有威胁
+    auto nearbyPlayers = getNearbyPlayers(200.0f);
+    bool hasThreat = false;
+    for (auto player : nearbyPlayers) {
+        if (player->teamId() != m_playerBall->teamId() && 
+            player->score() > m_playerBall->score() * 0.8f) {
+            hasThreat = true;
+            break;
+        }
+    }
+    if (!hasThreat && m_splitFrameCount > 5 * 60) { // 安全环境下5秒后就可以合并
+        shouldMerge = true;
+        qDebug() << "🔗 Should merge: Safe environment";
+    }
+    
+    // 4. 分裂球过于分散：最远距离超过400像素
+    if (myBalls.size() > 1) {
+        float maxDistance = 0;
+        for (auto ball1 : myBalls) {
+            for (auto ball2 : myBalls) {
+                if (ball1 != ball2) {
+                    float dist = QLineF(ball1->pos(), ball2->pos()).length();
+                    maxDistance = std::max(maxDistance, dist);
+                }
+            }
+        }
+        if (maxDistance > 400.0f) {
+            shouldMerge = true;
+            qDebug() << "🔗 Should merge: Balls too scattered (" << maxDistance << "px)";
+        }
+    }
+    
+    m_shouldMerge = shouldMerge;
+    return shouldMerge;
+}
+
+CloneBall* SimpleAIPlayer::findBestMergeTarget() const {
+    auto myBalls = getAllMyBalls();
+    
+    if (myBalls.size() <= 1) {
+        return nullptr;
+    }
+    
+    CloneBall* bestTarget = nullptr;
+    float bestScore = -1.0f;
+    QPointF currentPos = m_playerBall->pos();
+    
+    for (auto ball : myBalls) {
+        if (ball == m_playerBall || !m_playerBall->canMergeWith(ball)) {
+            continue;
+        }
+        
+        float distance = QLineF(currentPos, ball->pos()).length();
+        float ballScore = ball->score();
+        
+        // 评分：球越大越好，距离越近越好
+        float score = ballScore / (distance + 10.0f);
+        
+        // 优先选择最大的球
+        if (ballScore > m_playerBall->score()) {
+            score += 100.0f;
+        }
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestTarget = ball;
+        }
+    }
+    
+    return bestTarget;
+}
+
+AIAction SimpleAIPlayer::makeMergeDecision() {
+    CloneBall* mergeTarget = findBestMergeTarget();
+    
+    if (!mergeTarget) {
+        m_shouldMerge = false;
+        return AIAction(0, 0, ActionType::MOVE);
+    }
+    
+    m_preferredMergeTarget = mergeTarget;
+    QPointF targetPos = mergeTarget->pos();
+    QPointF currentPos = m_playerBall->pos();
+    
+    QPointF direction = targetPos - currentPos;
+    float distance = QLineF(QPointF(0,0), direction).length();
+    
+    if (distance < 0.1f) {
+        return AIAction(0, 0, ActionType::MOVE);
+    }
+    
+    direction /= distance;
+    
+    // 🔥 安全检查：确保合并路径安全
+    QPointF safeDirection = getSafeDirection(direction);
+    
+    qDebug() << "🔗 Merging: Moving towards ball at" << targetPos.x() << targetPos.y() 
+             << "distance:" << distance;
+    
+    return AIAction(safeDirection.x(), safeDirection.y(), ActionType::MOVE);
+}
+
+void SimpleAIPlayer::updateMergeStatus() {
+    auto myBalls = getAllMyBalls();
+    
+    // 更新分裂计数器
+    if (myBalls.size() > 1) {
+        m_splitFrameCount++;
+    } else {
+        m_splitFrameCount = 0;
+        m_shouldMerge = false;
+        m_preferredMergeTarget = nullptr;
+    }
+    
+    // 清理无效的合并目标
+    if (m_preferredMergeTarget && 
+        (m_preferredMergeTarget->isRemoved() || 
+         !m_playerBall->canMergeWith(m_preferredMergeTarget))) {
+        m_preferredMergeTarget = nullptr;
+    }
+}
+
+void SimpleAIPlayer::onMergePerformed(CloneBall* survivingBall, CloneBall* mergedBall) {
+    qDebug() << "🔗 Merge performed! Surviving ball:" << survivingBall->ballId() 
+             << "Merged ball:" << mergedBall->ballId();
+    
+    // 移除被合并的球
+    m_splitBalls.removeAll(mergedBall);
+    
+    // 确保合并后的球在列表中并重新连接信号
+    if (!m_splitBalls.contains(survivingBall)) {
+        m_splitBalls.append(survivingBall);
+        qDebug() << "🔗 Added surviving ball" << survivingBall->ballId() << "to AI control";
+    }
+    
+    // 🔥 重要：重新连接合并后球的所有信号，确保AI持续控制
+    disconnect(survivingBall, nullptr, this, nullptr); // 先断开所有连接
+    connect(survivingBall, &QObject::destroyed, this, &SimpleAIPlayer::onBallDestroyed);
+    connect(survivingBall, &CloneBall::splitPerformed, this, &SimpleAIPlayer::onSplitPerformed);
+    connect(survivingBall, &CloneBall::mergePerformed, this, &SimpleAIPlayer::onMergePerformed);
+    
+    // 🔥 如果主球被合并了，更新主球引用
+    if (m_playerBall == mergedBall) {
+        m_playerBall = survivingBall;
+        qDebug() << "🔗 Updated main ball to surviving ball:" << survivingBall->ballId();
+    }
+    
+    // 清理合并目标引用
+    if (m_preferredMergeTarget == mergedBall) {
+        m_preferredMergeTarget = nullptr;
+    }
+    
+    qDebug() << "🔗 Now controlling" << m_splitBalls.size() << "balls after merge";
 }
 
 } // namespace AI

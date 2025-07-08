@@ -118,11 +118,13 @@ void GameManager::resetGame()
 
 CloneBall* GameManager::createPlayer(int teamId, int playerId, const QPointF& position)
 {
+    qDebug() << "🔨 createPlayer called: teamId=" << teamId << "playerId=" << playerId;
+    
     // 🔥 修复：更严格的重复创建检查，防止人类玩家被重复创建
     for (CloneBall* player : m_players) {
         if (player && !player->isRemoved() && 
             player->teamId() == teamId && player->playerId() == playerId) {
-            qDebug() << "Player already exists:" << teamId << playerId << "- returning existing player";
+            qDebug() << "🔨 Player already exists:" << teamId << playerId << "- returning existing player";
             return player;
         }
     }
@@ -146,7 +148,8 @@ CloneBall* GameManager::createPlayer(int teamId, int playerId, const QPointF& po
     connect(player, &CloneBall::thornsEaten, this, &GameManager::handleThornsEaten); // 🔥 添加荆棘球信号连接
     
     emit playerAdded(player);
-    qDebug() << "Player created:" << teamId << playerId << "at" << spawnPos;
+    qDebug() << "🔨 Player created: teamId=" << teamId << "playerId=" << playerId 
+             << "ballId=" << player->ballId() << "at" << spawnPos;
     
     return player;
 }
@@ -729,6 +732,10 @@ void GameManager::handleBallRemoved(BaseBall* ball)
 
 void GameManager::handlePlayerSplit(CloneBall* originalBall, const QVector<CloneBall*>& newBalls)
 {
+    qDebug() << "🔄 handlePlayerSplit: originalBall=" << originalBall->ballId() 
+             << "teamId=" << originalBall->teamId() << "playerId=" << originalBall->playerId()
+             << "newBalls count=" << newBalls.size();
+    
     // 将新分裂的球添加到管理器
     for (CloneBall* newBall : newBalls) {
         addBall(newBall);
@@ -737,9 +744,12 @@ void GameManager::handlePlayerSplit(CloneBall* originalBall, const QVector<Clone
         // 连接新球的信号
         connect(newBall, &CloneBall::splitPerformed, this, &GameManager::handlePlayerSplit);
         connect(newBall, &CloneBall::sporeEjected, this, &GameManager::handleSporeEjected);
+        
+        qDebug() << "🔄 Added split ball: ballId=" << newBall->ballId() 
+                 << "teamId=" << newBall->teamId() << "playerId=" << newBall->playerId();
     }
     
-    qDebug() << "Player split: original" << originalBall->ballId() << "created" << newBalls.size() << "new balls";
+    qDebug() << "🔄 Player split complete. Total players now:" << m_players.size();
 }
 
 void GameManager::handleSporeEjected(CloneBall* ball, SporeBall* spore)
