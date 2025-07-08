@@ -79,6 +79,11 @@ constexpr int THORNS_SPLIT_MAX_SCORE = 5000;       // 荆棘分裂新球最大�
 // 孢子参数
 constexpr int SPORE_LIFESPAN = 600;                // 孢子生命周期(帧)
 
+// 🔥 新增：食物清理配置
+constexpr int FOOD_MAX_AGE_SECONDS = 60;           // 食物最大存活时间：60秒
+constexpr int FOOD_CLEANUP_INTERVAL_SECONDS = 15;  // 清理检查间隔：15秒
+constexpr int FOOD_CLEANUP_BATCH_SIZE = 50;        // 每次检查的食物数量
+
 // 衰减参数 (参考GoBigger原版)
 constexpr float DECAY_START_SCORE = 2600.0f;       // 开始衰减的分数 (GoBigger标准)
 constexpr float DECAY_RATE = 0.00005f;             // 衰减速率 (GoBigger标准)
@@ -94,6 +99,25 @@ constexpr float ZOOM_MAX = 2.0f;                   // 最大缩放
 constexpr float GRID_SIZE = 100.0f;                // 网格大小
 constexpr int NAME_FONT_SIZE = 16;                 // 名字字体大小
 constexpr int SCORE_FONT_SIZE = 14;                // 分数字体大小
+
+// 队伍颜色配置
+const static QVector<QColor> TEAM_COLORS = {
+    QColor(0, 150, 255),   // 队伍0: 亮蓝色 (人类玩家)
+    QColor(255, 80, 80),     // 队伍1: 红色
+    QColor(40, 200, 120),    // 队伍2: 绿色
+    QColor(255, 180, 40),    // 队伍3: 橙色
+    QColor(150, 100, 255),   // 队伍4: 紫色
+    QColor(255, 120, 200),   // 队伍5: 粉色
+    QColor(100, 220, 220),   // 队伍6: 青色
+    QColor(220, 220, 80),    // 队伍7: 黄色
+};
+
+// ============ 游戏逻辑参数 ============
+
+// 队伍设置
+inline constexpr int MAX_TEAMS = 8;                       // 最大队伍数量
+inline constexpr int MAX_PLAYERS_PER_TEAM = 2;            // 每队最大玩家数
+inline constexpr int HUMAN_TEAM_ID = 0;                   // 人类玩家固定队伍ID
 
 // ============ 工具函数 ============
 
@@ -206,11 +230,6 @@ inline QColor getTeamColor(int teamId) {
     }
     return QColor(128, 128, 128); // 默认灰色
 }
-
-// 队伍机制参数
-constexpr int MAX_TEAMS = 8;                       // 最大队伍数量
-constexpr int MAX_PLAYERS_PER_TEAM = 2;            // 每队最大玩家数量
-constexpr int HUMAN_TEAM_ID = 0;                   // 人类玩家默认队伍ID（从0开始）
 
 } // namespace GoBiggerConfig
 

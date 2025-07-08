@@ -19,9 +19,11 @@ GameManager::GameManager(QGraphicsScene* scene, const Config& config, QObject* p
     , m_gameTimer(nullptr)
     , m_foodTimer(nullptr)
     , m_thornsTimer(nullptr)
+    , m_foodCleanupTimer(nullptr) // 🔥 新增：初始化食物清理定时器
     , m_nextBallId(1)
     , m_foodRefreshFrameCount(0)
     , m_thornsRefreshFrameCount(0)
+    , m_foodCleanupIndex(0) // 🔥 新增：初始化清理索引
     , m_defaultAIModelPath("assets/ai_models/exported_models/ai_model_traced.pt")
 {
     // 初始化四叉树 - 使用游戏边界
@@ -58,6 +60,12 @@ GameManager::~GameManager()
         m_thornsTimer->stop();
         delete m_thornsTimer;
     }
+    
+    // 🔥 新增：清理食物清理定时器
+    if (m_foodCleanupTimer) {
+        m_foodCleanupTimer->stop();
+        delete m_foodCleanupTimer;
+    }
 }
 
 void GameManager::startGame()
@@ -67,6 +75,7 @@ void GameManager::startGame()
         m_gameTimer->start();
         m_foodTimer->start();
         m_thornsTimer->start();
+        m_foodCleanupTimer->start(); // 🔥 新增：启动食物清理定时器
         
         // GoBigger风格初始化：生成初始数量的食物
         for (int i = 0; i < m_config.initFoodCount; ++i) {
@@ -98,6 +107,7 @@ void GameManager::pauseGame()
         m_gameTimer->stop();
         m_foodTimer->stop();
         m_thornsTimer->stop();
+        m_foodCleanupTimer->stop(); // 🔥 新增：停止食物清理定时器
         
         emit gamePaused();
         qDebug() << "Game paused";
@@ -110,7 +120,8 @@ void GameManager::resetGame()
     clearAllBalls();
     m_nextBallId = 1;
     m_foodRefreshFrameCount = 0;  // 重置食物刷新计数器
-    m_thornsRefreshFrameCount = 0;  // 重置荆棘刷新计数器
+    m_thornsRefreshFrameCount = 0; // 重置荆棘刷新计数器
+    m_foodCleanupIndex = 0; // 🔥 新增：重置食物清理索引
     
     emit gameReset();
     qDebug() << "Game reset";
@@ -145,7 +156,6 @@ CloneBall* GameManager::createPlayer(int teamId, int playerId, const QPointF& po
     // 连接玩家特有的信号
     connect(player, &CloneBall::splitPerformed, this, &GameManager::handlePlayerSplit);
     connect(player, &CloneBall::sporeEjected, this, &GameManager::handleSporeEjected);
-    connect(player, &CloneBall::thornsEaten, this, &GameManager::handleThornsEaten); // 🔥 添加荆棘球信号连接
     
     emit playerAdded(player);
     qDebug() << "🔨 Player created: teamId=" << teamId << "playerId=" << playerId 
@@ -304,6 +314,42 @@ QVector<FoodBall*> GameManager::getFoodBallsInRect(const QRectF& rect) const
     return foodInRect;
 }
 
+QMap<int, float> GameManager::getAllTeamScores() const
+{
+    QMap<int, float> teamScores;
+    
+    // 遍历所有玩家球，按队伍ID累加分数
+    for (CloneBall* player : m_players) {
+        if (player && !player->isRemoved()) {
+            int teamId = player->teamId();
+            float score = player->score();
+            teamScores[teamId] += score;
+        }
+    }
+    
+    // 输出每个队伍的总分数和球数统计（简化版）
+    static int debugCounter = 0;
+    if (++debugCounter % 60 == 0) { // 每秒输出一次
+        for (auto it = teamScores.begin(); it != teamScores.end(); ++it) {
+            int teamId = it.key();
+            float totalScore = it.value();
+            
+            // 统计该队伍的球数
+            int ballCount = 0;
+            for (CloneBall* player : m_players) {
+                if (player && !player->isRemoved() && player->teamId() == teamId) {
+                    ballCount++;
+                }
+            }
+            
+            qDebug() << "🏆 Team" << teamId << "Score:" << static_cast<int>(totalScore) 
+                     << "Balls:" << ballCount;
+        }
+    }
+    
+    return teamScores;
+}
+
 void GameManager::initializeTimers()
 {
     // 游戏更新定时器
@@ -320,6 +366,11 @@ void GameManager::initializeTimers()
     m_thornsTimer = new QTimer(this);
     connect(m_thornsTimer, &QTimer::timeout, this, &GameManager::spawnThorns);
     m_thornsTimer->setInterval(m_config.gameUpdateInterval); // 与游戏更新同频，在spawnThorns内部按帧数控制
+    
+    // 🔥 新增：食物清理定时器
+    m_foodCleanupTimer = new QTimer(this);
+    connect(m_foodCleanupTimer, &QTimer::timeout, this, &GameManager::cleanupStaleFood);
+    m_foodCleanupTimer->setInterval(m_config.foodCleanupIntervalMs);
 }
 
 void GameManager::connectBallSignals(BaseBall* ball)
@@ -533,6 +584,60 @@ void GameManager::spawnThorns()
     }
 }
 
+// 🔥 新增：高效的食物清理机制
+void GameManager::cleanupStaleFood()
+{
+    if (m_foodBalls.isEmpty()) {
+        return;
+    }
+    
+    int totalFoodCount = m_foodBalls.size();
+    int batchSize = qMin(m_config.foodCleanupBatchSize, totalFoodCount);
+    int startIndex = m_foodCleanupIndex % totalFoodCount;
+    int cleanedCount = 0;
+    
+    // 🚀 性能优化：分批检查，每次只检查一部分食物
+    for (int i = 0; i < batchSize; ++i) {
+        int currentIndex = (startIndex + i) % totalFoodCount;
+        
+        // 防止索引越界
+        if (currentIndex >= m_foodBalls.size()) {
+            break;
+        }
+        
+        FoodBall* food = m_foodBalls[currentIndex];
+        if (!food || food->isRemoved()) {
+            continue;
+        }
+        
+        // 检查食物是否过期
+        if (food->isStale(m_config.foodMaxAgeMs)) {
+            // 记录清理位置，在新位置重新生成
+            QPointF newPos = generateRandomFoodPosition();
+            
+            // 移除过期食物
+            food->remove();
+            removeBall(food);
+            
+            // 在新位置生成新食物
+            FoodBall* newFood = new FoodBall(getNextBallId(), newPos, m_config.gameBorder);
+            addBall(newFood);
+            
+            cleanedCount++;
+        }
+    }
+    
+    // 更新下次检查的起始索引
+    m_foodCleanupIndex = (startIndex + batchSize) % qMax(1, totalFoodCount);
+    
+    // 📊 性能监控日志（仅在清理时输出）
+    if (cleanedCount > 0) {
+        qDebug() << "🧹 Food cleanup: cleaned" << cleanedCount 
+                 << "stale food items, checked batch size:" << batchSize 
+                 << "total food:" << totalFoodCount;
+    }
+}
+
 void GameManager::checkCollisions()
 {
     QVector<BaseBall*> allBalls = getAllBalls();
@@ -730,23 +835,34 @@ void GameManager::handleBallRemoved(BaseBall* ball)
     }
 }
 
-void GameManager::handlePlayerSplit(CloneBall* originalBall, const QVector<CloneBall*>& newBalls)
+void GameManager::handlePlayerSplit(CloneBall* player, const QVector<CloneBall*>& newBalls)
 {
-    qDebug() << "🔄 handlePlayerSplit: originalBall=" << originalBall->ballId() 
-             << "teamId=" << originalBall->teamId() << "playerId=" << originalBall->playerId()
-             << "newBalls count=" << newBalls.size();
-    
-    // 将新分裂的球添加到管理器
+    if (!player || newBalls.isEmpty()) {
+        return;
+    }
+
+    qDebug() << "🔄 Handling player split. Original ball:" << player->ballId() 
+             << "New balls created:" << newBalls.size();
+
     for (CloneBall* newBall : newBalls) {
-        addBall(newBall);
-        m_players.append(newBall);
-        
-        // 连接新球的信号
-        connect(newBall, &CloneBall::splitPerformed, this, &GameManager::handlePlayerSplit);
-        connect(newBall, &CloneBall::sporeEjected, this, &GameManager::handleSporeEjected);
-        
-        qDebug() << "🔄 Added split ball: ballId=" << newBall->ballId() 
-                 << "teamId=" << newBall->teamId() << "playerId=" << newBall->playerId();
+        if (newBall) {
+            // 🔥 关键修复：将新分裂的球添加到场景和全局玩家列表
+            if (!m_scene->items().contains(newBall)) {
+                 m_scene->addItem(newBall);
+            }
+            if (!m_allBalls.contains(newBall->ballId())) {
+                m_allBalls.insert(newBall->ballId(), newBall);
+            }
+            if (!m_players.contains(newBall)) {
+                m_players.append(newBall);
+                qDebug() << "  -> Added new ball" << newBall->ballId() << "to m_players.";
+            }
+            
+            // 连接新球的信号
+            connectBallSignals(newBall);
+
+            emit playerAdded(newBall);
+        }
     }
     
     qDebug() << "🔄 Player split complete. Total players now:" << m_players.size();
@@ -756,51 +872,6 @@ void GameManager::handleSporeEjected(CloneBall* ball, SporeBall* spore)
 {
     addBall(spore);
     qDebug() << "Spore ejected by player" << ball->ballId();
-}
-
-void GameManager::handleThornsCollision(ThornsBall* thorns, CloneBall* ball)
-{
-    Q_UNUSED(thorns)
-    Q_UNUSED(ball)
-    
-    // 荆棘碰撞不产生任何影响（GoBigger标准：只有能吃才有效果）
-    qDebug() << "Thorns collision - no effect";
-}
-
-void GameManager::handleThornsEaten(CloneBall* ball, ThornsBall* thorns)
-{
-    if (!ball || !thorns) return;
-    
-    qDebug() << "GameManager: Player" << ball->ballId() << "ate thorns" << thorns->ballId();
-    
-    // 计算当前玩家的总球数
-    int totalPlayerBalls = 0;
-    for (CloneBall* p : m_players) {
-        if (p && !p->isRemoved() && p->teamId() == ball->teamId() && p->playerId() == ball->playerId()) {
-            totalPlayerBalls++;
-        }
-    }
-    
-    qDebug() << "Player has" << totalPlayerBalls << "total balls before thorns split";
-    
-    // 执行荆棘分裂
-    QVector<CloneBall*> newBalls = ball->performThornsSplit(QVector2D(1, 0), totalPlayerBalls);
-    
-    // 添加新球到管理器
-    for (CloneBall* newBall : newBalls) {
-        addBall(newBall);
-        m_players.append(newBall);
-        
-        // 连接新球的信号
-        connectBallSignals(newBall);
-    }
-    
-    qDebug() << "Thorns split completed: created" << newBalls.size() << "new balls";
-    
-    // 发送分裂信号
-    if (!newBalls.isEmpty()) {
-        emit playerAdded(ball); // 通知有新的玩家球
-    }
 }
 
 void GameManager::clearAllBalls()
@@ -1234,4 +1305,37 @@ void GameManager::handleAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer
     // 这将通过信号机制由GameView处理
     
     qDebug() << "AI player removed from manager, remaining AI count:" << m_aiPlayers.size();
+}
+
+// 荆棘碰撞处理
+void GameManager::handleThornsCollision(ThornsBall* thorns, BaseBall* other)
+{
+    Q_UNUSED(thorns)
+    Q_UNUSED(other)
+    
+    // 荆棘碰撞处理 - 暂时不实现具体逻辑
+    qDebug() << "Thorns collision detected";
+}
+
+// 荆棘被吃掉处理
+void GameManager::handleThornsEaten(CloneBall* player, ThornsBall* thorns)
+{
+    if (!player || !thorns) return;
+    
+    qDebug() << "Player" << player->ballId() << "ate thorns" << thorns->ballId();
+    // 荆棘被吃处理逻辑已在CloneBall::eat中实现
+}
+
+// 合并完成处理
+void GameManager::handleMergePerformed(CloneBall* survivingBall, CloneBall* absorbedBall)
+{
+    if (!survivingBall || !absorbedBall) return;
+    
+    qDebug() << "Player ball" << survivingBall->ballId() << "merged with ball" << absorbedBall->ballId();
+    
+    // 从玩家列表中移除被吸收的球
+    m_players.removeOne(absorbedBall);
+    
+    // 从游戏场景中移除被吸收的球
+    removeBall(absorbedBall);
 }

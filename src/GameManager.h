@@ -46,6 +46,11 @@ public:
         qreal foodScoreMin = GoBiggerConfig::FOOD_MIN_SCORE;    // 食物最小分数
         qreal foodScoreMax = GoBiggerConfig::FOOD_MAX_SCORE;    // 食物最大分数
         
+        // 🔥 新增：食物清理配置
+        int foodCleanupIntervalMs = 15000;     // 清理检查间隔：15秒
+        int foodMaxAgeMs = 60000;              // 食物最大存活时间：60秒（1分钟）
+        int foodCleanupBatchSize = 50;         // 每次检查的食物数量
+        
         // 荆棘配置 (GoBigger标准)
         int initThornsCount = GoBiggerConfig::THORNS_COUNT;     // 初始荆棘数量 (9)
         int maxThornsCount = GoBiggerConfig::THORNS_COUNT_MAX;  // 最大荆棘数量 (12)
@@ -120,6 +125,9 @@ public:
     int getFoodCount() const { return m_foodBalls.size(); }
     int getThornsCount() const { return m_thornsBalls.size(); }
     int getPlayerCount() const { return m_players.size(); }
+    
+    // 队伍分数管理
+    QMap<int, float> getAllTeamScores() const;
 
 signals:
     void gameStarted();
@@ -131,16 +139,13 @@ signals:
     void ballRemoved(BaseBall* ball);
     void gameOver(int winningTeamId);
 
-private slots:
-    void updateGame();
-    void spawnFood();
-    void spawnThorns();
-    void handleBallRemoved(BaseBall* ball);
-    void handlePlayerSplit(CloneBall* originalBall, const QVector<CloneBall*>& newBalls);
+public slots:
+    void handlePlayerSplit(CloneBall* player, const QVector<CloneBall*>& newBalls);
     void handleSporeEjected(CloneBall* ball, SporeBall* spore);
-    void handleThornsCollision(ThornsBall* thorns, CloneBall* ball);
-    void handleThornsEaten(CloneBall* ball, ThornsBall* thorns); // 新增：处理吃荆棘球
-    void handleAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer); // 新增：处理AI玩家被销毁
+    void handleMergePerformed(CloneBall* survivingBall, CloneBall* absorbedBall);
+    void handleThornsCollision(ThornsBall* thorns, BaseBall* other);
+    void handleThornsEaten(CloneBall* player, ThornsBall* thorns);
+    void handleAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer);
 
 private:
     QGraphicsScene* m_scene;
@@ -151,6 +156,7 @@ private:
     QTimer* m_gameTimer;
     QTimer* m_foodTimer;
     QTimer* m_thornsTimer;
+    QTimer* m_foodCleanupTimer; // 🔥 新增：食物清理定时器
     
     // 球的管理
     QVector<CloneBall*> m_players;
@@ -168,6 +174,9 @@ private:
     // GoBigger风格的食物刷新机制
     int m_foodRefreshFrameCount;
     
+    // 🔥 新增：食物清理机制
+    int m_foodCleanupIndex;        // 分批检查的当前索引
+    
     // GoBigger风格的荆棘刷新机制
     int m_thornsRefreshFrameCount;
     
@@ -178,6 +187,15 @@ private:
     void initializeTimers();
     void connectBallSignals(BaseBall* ball);
     void disconnectBallSignals(BaseBall* ball);
+    
+    // 游戏循环
+    void updateGame();
+    void spawnFood();
+    void spawnThorns();
+    void cleanupStaleFood();
+    
+    // 事件处理
+    void handleBallRemoved(BaseBall* ball);
     
     // 生成函数
     QPointF generateRandomPosition() const;

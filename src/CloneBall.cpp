@@ -131,7 +131,11 @@ QVector<CloneBall*> CloneBall::performSplit(const QVector2D& direction)
     }
     
     // 计算分裂后的分数 - 使用GoBigger标准
+    float originalScore = m_score;
     float splitScore = m_score / 2.0f;
+    
+    qDebug() << "🔄 Split: Ball" << m_ballId << "Team" << m_teamId 
+             << "Original Score:" << originalScore << "-> Split Score:" << splitScore;
     
     // 计算分裂位置 - 参考GoBigger: position + direction * (radius * 2)
     QVector2D splitDir = direction.length() > 0.01 ? direction.normalized() : m_moveDirection.normalized();

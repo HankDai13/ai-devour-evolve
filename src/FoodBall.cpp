@@ -2,11 +2,13 @@
 #include "GoBiggerConfig.h"
 #include <QRandomGenerator>
 #include <QDebug>
+#include <QDateTime> // 🔥 新增：用于时间戳
 
 FoodBall::FoodBall(int ballId, const QPointF& position, const Border& border, const Config& config, QGraphicsItem* parent)
     : BaseBall(ballId, position, GoBiggerConfig::FOOD_SCORE, border, FOOD_BALL, parent)
     , m_config(config)
     , m_colorIndex(0)
+    , m_createdTime(QDateTime::currentMSecsSinceEpoch()) // 🔥 新增：记录创建时间
 {
     // 使用GoBigger标准食物分数（固定100分）
     float minScore = GoBiggerConfig::FOOD_MIN_SCORE;
@@ -16,6 +18,17 @@ FoodBall::FoodBall(int ballId, const QPointF& position, const Border& border, co
     setScore(randomScore);
     
     generateColorIndex();
+}
+
+// 🔥 新增：生命周期管理方法实现
+qint64 FoodBall::getAge() const
+{
+    return QDateTime::currentMSecsSinceEpoch() - m_createdTime;
+}
+
+bool FoodBall::isStale(qint64 maxAgeMs) const
+{
+    return getAge() > maxAgeMs;
 }
 
 void FoodBall::move(const QVector2D& direction, qreal duration)

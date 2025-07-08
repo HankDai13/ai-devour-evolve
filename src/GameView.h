@@ -136,7 +136,8 @@ private:
     // 队伍管理
     int assignTeamForNewAI(); // 为新AI分配队伍
     void updateTeamScores(); // 更新队伍分数
-    
+    QColor getTeamColor(int teamId) const; // 新增：获取队伍颜色
+
     // 队伍积分和排行榜
     QMap<int, float> calculateTeamScores() const;
     void drawTeamLeaderboard(QPainter* painter);

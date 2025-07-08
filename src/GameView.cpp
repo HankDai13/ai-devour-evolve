@@ -860,6 +860,89 @@ void GameView::handleEjectAction()
     }
 }
 
+QColor GameView::getTeamColor(int teamId) const
+{
+    if (teamId >= 0 && teamId < GoBiggerConfig::TEAM_COLORS.size()) {
+        return GoBiggerConfig::TEAM_COLORS[teamId];
+    }
+    return Qt::gray; // 默认颜色
+}
+
+void GameView::paintEvent(QPaintEvent *event)
+{
+    // 首先调用基类的paintEvent
+    QGraphicsView::paintEvent(event);
+
+    // 然后在UI层绘制排行榜
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing);
+    drawTeamLeaderboard(&painter);
+}
+
+void GameView::drawTeamLeaderboard(QPainter* painter)
+{
+    if (!painter) return;
+
+    // 1. 获取并排序队伍分数
+    QMap<int, float> teamScores = calculateTeamScores();
+    if (teamScores.isEmpty()) return;
+
+    QVector<QPair<int, float>> sortedScores;
+    for (auto it = teamScores.constBegin(); it != teamScores.constEnd(); ++it) {
+        sortedScores.append(qMakePair(it.key(), it.value()));
+    }
+    std::sort(sortedScores.begin(), sortedScores.end(), [](const QPair<int, float>& a, const QPair<int, float>& b) {
+        return a.second > b.second;
+    });
+
+    // 2. 设置排行榜样式
+    int width = 220;
+    int height = 40 + sortedScores.size() * 30;
+    int margin = 15;
+    QRectF leaderboardRect(viewport()->width() - width - margin, margin, width, height);
+
+    // 绘制半透明背景
+    painter->setBrush(QColor(0, 0, 0, 100));
+    painter->setPen(Qt::NoPen);
+    painter->drawRoundedRect(leaderboardRect, 10, 10);
+
+    // 3. 绘制标题
+    painter->setPen(Qt::white);
+    QFont titleFont("Arial", 14, QFont::Bold);
+    painter->setFont(titleFont);
+    painter->drawText(leaderboardRect.adjusted(0, 10, 0, 0), Qt::AlignHCenter | Qt::AlignTop, "Team Leaderboard");
+
+    // 4. 绘制每个队伍的分数
+    QFont entryFont("Arial", 12);
+    painter->setFont(entryFont);
+    int yPos = leaderboardRect.top() + 45;
+
+    for (const auto& pair : sortedScores) {
+        int teamId = pair.first;
+        float score = pair.second;
+
+        // 获取队伍颜色
+        QColor teamColor = getTeamColor(teamId);
+        painter->setPen(teamColor);
+
+        // 构造队伍名称
+        QString teamName = (teamId == GoBiggerConfig::HUMAN_TEAM_ID) ? "Your Team" : QString("AI Team %1").arg(teamId);
+
+        // 绘制队伍名称和分数
+        QRectF textRect(leaderboardRect.left() + 15, yPos, leaderboardRect.width() - 30, 25);
+        painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, teamName);
+        painter->drawText(textRect, Qt::AlignRight | Qt::AlignVCenter, QString::number(static_cast<int>(score)));
+
+        yPos += 30;
+    }
+}
+
+QMap<int, float> GameView::calculateTeamScores() const
+{
+    if (!m_gameManager) return {};
+    return m_gameManager->getAllTeamScores();
+}
+
 void GameView::onGameStarted()
 {
     qDebug() << "Game started - View updated";
@@ -1180,7 +1263,7 @@ float GameView::getTotalPlayerScore() const
     
     for (CloneBall* ball : allBalls) {
         if (ball && !ball->isRemoved()) {
-            totalScore += ball->radius() * ball->radius(); // 以面积计算分数
+            totalScore += ball->score(); // 🔥 修正：使用实际分数而不是面积
         }
     }
     
@@ -1232,33 +1315,6 @@ QPointF GameView::calculatePlayerCentroidAll(const QVector<CloneBall*>& balls) c
     return QPointF(0, 0);
 }
 
-// ============ 队伍积分和排行榜功能实现 ============
-
-QMap<int, float> GameView::calculateTeamScores() const
-{
-    QMap<int, float> teamScores;
-    
-    if (!m_gameManager) return teamScores;
-    
-    // 统计所有玩家球的分数
-    QVector<CloneBall*> allPlayers = m_gameManager->getPlayers();
-    for (CloneBall* player : allPlayers) {
-        if (player && !player->isRemoved()) {
-            int teamId = player->teamId();
-            teamScores[teamId] += player->score();
-        }
-    }
-    
-    return teamScores;
-}
-
-void GameView::drawTeamLeaderboard(QPainter* painter)
-{
-    if (!painter) return;
-
-    // ... (existing code)
-}
-
 void GameView::onGameOver(int winningTeamId)
 {
     showGameOverScreen(winningTeamId);
@@ -1284,17 +1340,4 @@ void GameView::showGameOverScreen(int winningTeamId)
     textItem->setPos(sceneRect().center().x() - textItem->boundingRect().width() / 2, 
                      sceneRect().center().y() - textItem->boundingRect().height() / 2);
     scene()->addItem(textItem);
-}
-
-void GameView::paintEvent(QPaintEvent *event)
-{
-    // 首先调用基类的paintEvent来绘制场景内容
-    QGraphicsView::paintEvent(event);
-    
-    // 然后在视图层绘制UI元素（排行榜等）
-    QPainter painter(viewport());
-    painter.setRenderHint(QPainter::Antialiasing);
-    
-    // 🔥 在视图坐标系中绘制排行榜，不受场景变换影响
-    drawTeamLeaderboard(&painter);
 }
