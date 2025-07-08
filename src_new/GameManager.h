@@ -120,6 +120,11 @@ public:
     int getFoodCount() const { return m_foodBalls.size(); }
     int getThornsCount() const { return m_thornsBalls.size(); }
     int getPlayerCount() const { return m_players.size(); }
+    
+    // 手动游戏更新方法（用于多智能体环境）
+    void manualUpdateGame();
+    void manualSpawnFood();
+    void manualSpawnThorns();
 
 signals:
     void gameStarted();

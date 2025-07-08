@@ -258,6 +258,15 @@ AIAction SimpleAIPlayer::makeFoodHunterDecision() {
     auto nearbyBalls = getNearbyBalls(180.0f);
     auto nearbyFood = getNearbyFood(200.0f);
     
+    // 调试输出：每10次决策输出一次状态
+    static int debugCounter = 0;
+    debugCounter++;
+    if (debugCounter % 10 == 0) {
+        qDebug() << "AI Player" << m_playerBall->ballId() << "- Pos:" << playerPos 
+                 << "Score:" << playerScore << "NearbyFood:" << nearbyFood.size()
+                 << "NearbyPlayers:" << nearbyPlayers.size();
+    }
+    
     // 1. 威胁评估 - 计算周围威胁等级
     QVector2D escapeDirection(0, 0);
     float totalThreatLevel = 0.0f;
@@ -596,6 +605,9 @@ void SimpleAIPlayer::executeAction(const AIAction& action) {
 void SimpleAIPlayer::executeActionForBall(CloneBall* ball, const AIAction& action) {
     if (!ball || ball->isRemoved()) return;
     
+    // 记录移动前的位置（用于调试）
+    QPointF oldPos = ball->pos();
+    
     // 🔥 为每个球单独进行边界检测
     CloneBall* originalPlayerBall = m_playerBall;
     m_playerBall = ball; // 临时设置为当前球以进行边界检测
@@ -605,6 +617,15 @@ void SimpleAIPlayer::executeActionForBall(CloneBall* ball, const AIAction& actio
         QPointF targetDirection(action.dx, action.dy);
         QPointF safeDirection = getSafeDirection(targetDirection);
         ball->setTargetDirection(safeDirection);
+        
+        // 调试输出：每20次输出一次移动信息
+        static int moveCounter = 0;
+        moveCounter++;
+        if (moveCounter % 20 == 0) {
+            QPointF newPos = ball->pos();
+            qDebug() << "AI Ball" << ball->ballId() << "move: from" << oldPos 
+                     << "to" << newPos << "direction:" << safeDirection;
+        }
     }
     
     // 恢复原始主球

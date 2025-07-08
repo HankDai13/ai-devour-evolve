@@ -130,6 +130,11 @@ py::dict MultiAgentGameEngine::step(const py::dict& actions)
         }
     }
     
+    // 手动更新游戏状态（这是关键！）
+    m_gameManager->manualUpdateGame();    // 更新物理状态、碰撞检测
+    m_gameManager->manualSpawnFood();     // 补充食物
+    m_gameManager->manualSpawnThorns();   // 补充荆棘球
+    
     // 让游戏管理器更新一帧
     // 注意：传统AI会自动执行他们的决策
     m_frameCount++;
@@ -224,32 +229,54 @@ py::dict MultiAgentGameEngine::getRewardInfo() const
 {
     py::dict rewardInfo;
     
-    // 基础奖励：分数变化
+    // RL智能体信息
     CloneBall* rlBall = m_gameManager->getPlayer(m_rlPlayerTeamId, m_rlPlayerPlayerId);
     if (rlBall) {
         rewardInfo["score"] = rlBall->score();
+        rewardInfo["rl_score"] = rlBall->score();  // 添加RL分数别名
         rewardInfo["alive"] = rlBall->isActive();
         rewardInfo["can_split"] = rlBall->canSplit();
         rewardInfo["can_eject"] = rlBall->canEject();
     } else {
         rewardInfo["score"] = 0.0;
+        rewardInfo["rl_score"] = 0.0;
         rewardInfo["alive"] = false;
         rewardInfo["can_split"] = false;
         rewardInfo["can_eject"] = false;
     }
     
-    // 团队排名奖励
-    auto teamRanking = calculateTeamRanking();
-    int rlTeamRank = static_cast<int>(teamRanking.size());  // 默认最后一名
-    for (int i = 0; i < static_cast<int>(teamRanking.size()); ++i) {
-        py::dict teamInfo = teamRanking[i].cast<py::dict>();
-        if (teamInfo["team_id"].cast<int>() == m_rlPlayerTeamId) {
-            rlTeamRank = i + 1;  // 1-based ranking
-            break;
+    // AI对手分数信息
+    for (int i = 0; i < m_config.aiOpponentCount; ++i) {
+        int teamId = i + 1;  // AI团队从1开始
+        int playerId = 0;
+        
+        CloneBall* aiBall = m_gameManager->getPlayer(teamId, playerId);
+        if (aiBall) {
+            QString aiScoreKey = QString("ai_%1_score").arg(i);
+            rewardInfo[aiScoreKey.toStdString().c_str()] = aiBall->score();
+        } else {
+            QString aiScoreKey = QString("ai_%1_score").arg(i);
+            rewardInfo[aiScoreKey.toStdString().c_str()] = 0.0;
         }
     }
+    
+    // 团队排名信息
+    auto teamRanking = calculateTeamRanking();
+    py::list rankingList;
+    int rlTeamRank = static_cast<int>(teamRanking.size());  // 默认最后一名
+    
+    for (int i = 0; i < static_cast<int>(teamRanking.size()); ++i) {
+        py::dict teamInfo = teamRanking[i].cast<py::dict>();
+        rankingList.append(teamInfo);
+        
+        if (teamInfo["team_id"].cast<int>() == m_rlPlayerTeamId) {
+            rlTeamRank = i + 1;  // 1-based ranking
+        }
+    }
+    
     rewardInfo["team_rank"] = rlTeamRank;
     rewardInfo["total_teams"] = teamRanking.size();
+    rewardInfo["team_ranking"] = rankingList;  // 添加完整排名信息
     
     return rewardInfo;
 }
@@ -399,22 +426,37 @@ py::list MultiAgentGameEngine::calculateTeamRanking() const
 {
     QMap<int, float> teamScores;
     
-    // 计算每个团队的总分
+    // 1. 计算普通玩家（包括RL智能体）的分数
     auto players = m_gameManager->getPlayers();
     for (auto player : players) {
-        if (player) {  // 只检查player是否存在，不要求必须active
+        if (player) {
             int teamId = player->teamId();
             teamScores[teamId] += player->score();
+            qDebug() << "Regular player - Team:" << teamId << "Score:" << player->score();
         }
     }
     
-    // 如果没有找到任何玩家，至少包含RL智能体的团队
+    // 2. 计算AI玩家的分数
+    auto aiPlayers = m_gameManager->getAIPlayers();
+    for (auto aiPlayer : aiPlayers) {
+        if (aiPlayer && aiPlayer->getPlayerBall()) {
+            CloneBall* aiBall = aiPlayer->getPlayerBall();
+            int teamId = aiBall->teamId();
+            teamScores[teamId] += aiBall->score();
+            qDebug() << "AI player - Team:" << teamId << "Score:" << aiBall->score();
+        }
+    }
+    
+    // 如果没有找到任何玩家，初始化基础团队结构
     if (teamScores.isEmpty()) {
+        qWarning() << "No players found, initializing default team structure";
         teamScores[m_rlPlayerTeamId] = 0.0f;
         for (int i = 0; i < m_config.aiOpponentCount; ++i) {
             teamScores[i + 1] = 0.0f;
         }
     }
+    
+    qDebug() << "Team scores calculated:" << teamScores;
     
     // 转换为排序列表
     QVector<QPair<int, float>> sortedTeams;
@@ -438,6 +480,7 @@ py::list MultiAgentGameEngine::calculateTeamRanking() const
         ranking.append(teamInfo);
     }
     
+    qDebug() << "Final ranking size:" << ranking.size();
     return ranking;
 }
 

@@ -33,10 +33,10 @@ if not build_dir_found:
     raise ImportError("❌ 未找到有效的构建目录。请确保项目已编译。")
 
 try:
-    import gobigger_multi_env
-    print("✅ 成功导入 gobigger_multi_env 模块")
+    import gobigger_env
+    print("✅ 成功导入 gobigger_env 模块")
 except ImportError as e:
-    print(f"❌ 导入 gobigger_multi_env 失败: {e}")
+    print(f"❌ 导入 gobigger_env 失败: {e}")
     print(f"搜索路径: {build_dir_found}")
     raise
 
@@ -77,7 +77,7 @@ class MultiAgentGoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         self.config = config or {}
         
         # 创建C++多智能体引擎配置
-        engine_config = gobigger_multi_env.MultiAgentConfig()
+        engine_config = gobigger_env.MultiAgentConfig()
         engine_config.maxFoodCount = self.config.get('max_food_count', 3000)
         engine_config.initFoodCount = self.config.get('init_food_count', 2500)
         engine_config.maxThornsCount = self.config.get('max_thorns_count', 12)
@@ -87,7 +87,7 @@ class MultiAgentGoBiggerEnv(gym.Env if GYMNASIUM_AVAILABLE else gym.Env):
         engine_config.gameUpdateInterval = self.config.get('update_interval', 16)
         
         # 创建C++引擎
-        self.engine = gobigger_multi_env.MultiAgentGameEngine(engine_config)
+        self.engine = gobigger_env.MultiAgentGameEngine(engine_config)
         
         # 定义RL智能体的动作和观察空间
         # 动作: [move_x, move_y, action_type]

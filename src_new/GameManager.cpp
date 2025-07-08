@@ -1207,3 +1207,24 @@ void GameManager::handleAIPlayerDestroyed(GoBigger::AI::SimpleAIPlayer* aiPlayer
     
     qDebug() << "AI player removed from manager, remaining AI count:" << m_aiPlayers.size();
 }
+
+// 手动游戏更新方法（用于多智能体环境）
+void GameManager::manualUpdateGame()
+{
+    updateGame();
+    
+    // 🔥 关键：推进场景物理状态，确保所有球的位置更新
+    if (m_scene) {
+        m_scene->advance();
+    }
+}
+
+void GameManager::manualSpawnFood()
+{
+    spawnFood();
+}
+
+void GameManager::manualSpawnThorns()
+{
+    spawnThorns();
+}
