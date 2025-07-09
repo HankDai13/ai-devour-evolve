@@ -1,10 +1,8 @@
 # 课程设计报告：基于C++与AI的实时竞技游戏“AI Devour Evolve”
 
-**专业：** 计算机科学与技术
-**班级：** XXXXXX
-**学号：** XXXXXX
-**姓名：** XXXXXX
-**日期：** 2025年7月8日
+**专业：** 计算机科学与技术  
+**项目类型：** 课程设计项目  
+**完成时间：** 2025年7月
 
 ---
 
@@ -1052,6 +1050,8 @@ def calculate_reward(self, agent_id: str, game_state: Dict) -> float:
 **图4：项目整体工程量展示**
 
 ![image-20250709202821023](assets/image-20250709202821023.png)
+
+![image-20250709204259752](assets/image-20250709204259752.png)
 
 *   **图片描述**：一张展示项目文件目录结构的截图（例如使用`tree`命令或IDE的目录树视图）。截图中应能看到`src`, `python`, `scripts`, `develop-Documents`, `build-*`等众多目录，直观地传达出本项目“巨大无比”的工程规模和工作量。
 

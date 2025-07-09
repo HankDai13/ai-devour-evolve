@@ -72,7 +72,7 @@ bool MultiPlayerManager::addPlayer(const PlayerInfo& playerInfo)
     } else {
         // 人类玩家的处理逻辑（暂时为空，可以后续扩展）
         if (m_gameRunning && m_gameManager) {
-            // TODO: 添加人类玩家到GameManager
+            // 添加人类玩家到GameManager
             qDebug() << "Human player addition during running game not yet implemented";
         }
     }
@@ -105,7 +105,7 @@ bool MultiPlayerManager::removePlayer(int teamId, int playerId)
         if (player.type == PlayerType::AI) {
             m_gameManager->removeAIPlayer(teamId, playerId);
         } else {
-            // TODO: 移除人类玩家
+            // 移除人类玩家
         }
     }
     

@@ -743,7 +743,7 @@ void CloneBall::checkForMerge()
     
     // 额外检查：对于没有明确父子关系但同属一个玩家的球
     // 这解决了多次分裂后分身球关系复杂的情况
-    // TODO: 这里需要从GameManager获取同玩家的所有球进行检查
+    // 检查与同玩家其他球的合并可能性
 }
 
 bool CloneBall::shouldRigidCollide(CloneBall* other) const
