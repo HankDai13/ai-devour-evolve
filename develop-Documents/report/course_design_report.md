@@ -21,7 +21,9 @@
 
 ### 1.2 选题分析
 
-选择此题目作为课程设计，具有以下几方面**图1：游戏主界面运行效果**
+选择此题目作为课程设计，具有以下几方面
+
+**图1：游戏主界面运行效果**
 
 ![游戏主界面](assets/game_main_interface.png)![image-20250709151127019](assets/image-20250709151127019.png)
 
@@ -43,39 +45,27 @@
 
 **图2：四叉树空间分割可视化**
 
-![四叉树可视化](assets/quadtree_visualization.png)
+![Bitmap and its compressed quadtree representation](https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Quad_tree_bitmap.svg/500px-Quad_tree_bitmap.svg.png)
 
 *   **图片描述**：展示四叉树算法将游戏地图递归分割的可视化效果。图中用不同颜色的矩形框表示不同深度的四叉树节点，每个节点内包含的游戏对象数量不超过设定阈值。
 
-**图3：AI决策逻辑核心代码**
+**图3：碰撞检测算法实现**
 
-![AI决策代码](assets/ai_decision_code.png)
-
-*   **图片描述**：`SimpleAIPlayer.cpp`文件中`update_state()`函数的代码截图，展示AI在威胁评估、机会分析和状态转换方面的复杂逻辑。代码中包含详细的注释，体现了AI决策的智能性。
-
-**图4：碰撞检测算法实现**
-
-![碰撞检测算法](assets/collision_detection_code.png)
+![image-20250709200132241](assets/image-20250709200132241.png)
 
 *   **图片描述**：`BaseBall.cpp`和`PlayerCell.cpp`中碰撞检测相关函数的代码截图，展示了从基础圆形碰撞到复杂吞噬逻辑的实现过程。
 
-**图5：强化学习训练过程**
+**图4：强化学习训练过程**
 
-![强化学习训练](assets/reinforcement_learning_training.png)
+![image-20250709195622442](assets/image-20250709195622442.png)
 
 *   **图片描述**：Python终端中运行强化学习训练脚本的截图，显示了使用`stable-baselines3`训练多智能体环境时的训练指标变化，包括奖励值、损失函数等关键数据。
 
-**图6：项目工程结构展示**
+**图5：项目工程结构展示**
 
-![项目结构](assets/project_structure.png)
+![image-20250709195741411](assets/image-20250709195741411.png)
 
 *   **图片描述**：使用IDE或文件管理器展示的项目目录结构截图，突出显示`src/`、`python/`、`scripts/`、`develop-Documents/`等主要目录，体现项目的庞大规模和复杂性。
-
-**图7：性能优化效果对比**
-
-![性能优化对比](assets/performance_comparison.png)
-
-*   **图片描述**：性能分析工具显示的优化前后对比图表，展示四叉树算法实施前后的帧率变化、CPU使用率等关键性能指标的改善。炼和检验我在大学期间所学的专业知识：
 
 *   **技术综合性强**：该项目横跨了多个计算机科学的核心领域，包括：
     *   **高性能游戏引擎开发**：底层逻辑采用C++实现，以满足实时游戏中对大量对象（上百个食物、荆棘球、玩家细胞）进行物理模拟和碰撞检测的性能要求。
@@ -999,6 +989,7 @@ def calculate_reward(self, agent_id: str, game_state: Dict) -> float:
 *   **问题描述**：项目包含多个子模块（核心引擎、GUI、AI模块、Python绑定、测试程序），并且依赖Qt、pybind11等外部库。为不同平台、不同配置（Debug/Release）维护构建脚本是一项繁琐且易错的工作。
 
 *   **解决方案**：全面采用**CMake**作为构建系统，实现了模块化管理：
+    
     ```cmake
     # 根目录CMakeLists.txt
     cmake_minimum_required(VERSION 3.16)
@@ -1049,12 +1040,19 @@ def calculate_reward(self, agent_id: str, game_state: Dict) -> float:
 *   **图片描述**：一张游戏正常运行时的截图。画面中应清晰地展示出由玩家控制的细胞、多个由`SimpleAIPlayer`驱动的AI对手、地图上的食物和荆棘球。此图旨在直观展示项目的完成度和视觉效果。
 
 **图2：核心AI决策逻辑代码**
+
 *   **图片描述**：截取`src/SimpleAIPlayer.cpp`中`update_state`函数的代码片段。该片段应能体现AI在评估威胁和机会后，如何在`Escaping`、`Attacking`、`FindingFood`等状态间进行切换的决策逻辑。此图用以证明AI代码的复杂性和设计的精巧性。
 
 **图3：强化学习分支训练成果**
+
+![image-20250709200354501](assets/image-20250709200354501.png)
+
 *   **图片描述**：一张在Python端使用`stable-baselines3`训练`MultiAgentGoBiggerEnv`环境时的终端截图。图中应包含训练过程中的关键指标，如`rollout/ep_rew_mean`（回合平均奖励）的稳步上升曲线，或`train/loss`（训练损失）的下降趋势。此图是展示我在高级AI领域探索深度和付出巨大努力的有力证明。
 
 **图4：项目整体工程量展示**
+
+![image-20250709202821023](assets/image-20250709202821023.png)
+
 *   **图片描述**：一张展示项目文件目录结构的截图（例如使用`tree`命令或IDE的目录树视图）。截图中应能看到`src`, `python`, `scripts`, `develop-Documents`, `build-*`等众多目录，直观地传达出本项目“巨大无比”的工程规模和工作量。
 
 ---
