@@ -357,14 +357,14 @@ AIAction SimpleAIPlayer::makeRandomDecision() {
 }
 
 AIAction SimpleAIPlayer::makeFoodHunterDecision() {
-    // 🔥 增强目标锁定逻辑，减少频繁切换目标导致的打转
+    // 目标锁定逻辑，减少频繁切换目标导致的打转
     if (m_currentTarget) {
         if (m_currentTarget->isRemoved() || !m_playerBall->canEat(m_currentTarget)) {
             m_currentTarget = nullptr;
             m_targetLockFrames = 0;
         } else {
             m_targetLockFrames++;
-            // 🔥 延长目标锁定时间，减少切换频率
+            // 延长目标锁定时间，减少切换频率
             if (m_targetLockFrames < 15) { // 从10增加到15帧
                 QPointF direction = m_currentTarget->pos() - m_playerBall->pos();
                 float length = QLineF(QPointF(0,0), direction).length();
@@ -373,7 +373,7 @@ AIAction SimpleAIPlayer::makeFoodHunterDecision() {
                     return AIAction(safeDirection.x(), safeDirection.y(), ActionType::MOVE);
                 }
             } else {
-                // 🔥 目标锁定超时后，检查是否应该继续追求该目标
+                // 目标锁定超时后，检查是否应该继续追求该目标
                 QPointF direction = m_currentTarget->pos() - m_playerBall->pos();
                 float distance = QLineF(QPointF(0,0), direction).length();
                 
